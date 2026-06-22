@@ -315,7 +315,7 @@ async function createExcelBuffer(activity, records) {
       formatClock(record.time)
     ])
   })
-  worksheet.addRow(['本日志由 HAM台网点名主控台 自动生成，技术支持BHJSS'])
+  worksheet.addRow(['本日志由 HAM台网点名主控台 自动生成，技术支持BH1JSS'])
   worksheet.mergeCells(`A${worksheet.rowCount}:G${worksheet.rowCount}`)
 
   const thinBorder = { style: 'thin', color: { argb: 'FF000000' } }

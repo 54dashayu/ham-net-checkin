@@ -4,6 +4,7 @@ import {
   Download,
   FileSpreadsheet,
   FilePlus2,
+  Info,
   Pencil,
   Plus,
   Radio,
@@ -103,6 +104,7 @@ const excelSaving = ref(false)
 const autoSaveTimer = ref(null)
 const serverSaveAvailable = ref(false)
 const authorQrOpen = ref(false)
+const aboutOpen = ref(false)
 const publicSession = reactive({
   startedAt: Date.now(),
   activityId: initialActivityId || 'default',
@@ -2139,7 +2141,7 @@ const buildExcelWorkbook = () => {
   rows.forEach((row) => {
     worksheet.addRow(headers.map((header) => row[header] || ''))
   })
-  worksheet.addRow(['本日志由 HAM台网点名主控台 自动生成，技术支持BHJSS'])
+  worksheet.addRow(['本日志由 HAM台网点名主控台 自动生成，技术支持BH1JSS'])
   worksheet.mergeCells(`A${worksheet.rowCount}:G${worksheet.rowCount}`)
 
   const thinBorder = { style: 'thin', color: { argb: 'FF000000' } }
@@ -2204,6 +2206,39 @@ const writeBlobToHandle = async (handle, blob) => {
   await writable.close()
 }
 
+const saveLocalExcelFile = async ({ silent = false, allowPicker = true } = {}) => {
+  if (!allowPicker && !excelFileHandle.value) return false
+  const blob = await createExcelBlob()
+  const filename = getExcelFilename()
+  if (window.showSaveFilePicker) {
+    if (!excelFileHandle.value) {
+      if (!allowPicker) return false
+      excelFileHandle.value = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [
+          {
+            description: 'Excel 表格',
+            accept: {
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
+            }
+          }
+        ]
+      })
+    }
+    await writeBlobToHandle(excelFileHandle.value, blob)
+    return true
+  }
+  if (!allowPicker) return false
+  if (isPublicWebVersion.value && !assertPublicWebAllowed('download')) return false
+  downloadBlob(blob, filename)
+  if (isPublicWebVersion.value) {
+    publicSession.downloads += 1
+    persistPublicSession()
+  }
+  if (!silent) showNotice('浏览器已下载点名表格')
+  return true
+}
+
 const saveCheckinToServer = async ({ silent = false } = {}) => {
   if (!assertPublicWebAllowed('save')) throw new Error('网络版测试限制')
   const response = await fetch(serverApiPath('/api/checkins'), {
@@ -2238,39 +2273,26 @@ const saveExcelFile = async ({ silent = false, allowPicker = true } = {}) => {
   if (excelSaving.value) return
   if (!allowPicker && !excelFileHandle.value && !serverSaveAvailable.value) return
   excelSaving.value = true
+  let serverSaved = false
+  let localSaved = false
   try {
     try {
       await saveCheckinToServer({ silent })
-      return
+      serverSaved = true
     } catch (serverError) {
       if (isPublicWebVersion.value) throw serverError
       if (serverSaveAvailable.value || silent || !allowPicker) throw serverError
     }
 
-    const blob = await createExcelBlob()
-    const filename = getExcelFilename()
-    if (window.showSaveFilePicker) {
-      if (!excelFileHandle.value) {
-        if (!allowPicker) return
-        excelFileHandle.value = await window.showSaveFilePicker({
-          suggestedName: filename,
-          types: [
-            {
-              description: 'Excel 表格',
-              accept: {
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
-              }
-            }
-          ]
-        })
-      }
-      await writeBlobToHandle(excelFileHandle.value, blob)
-      if (!silent) autoSaveEnabled.value = true
-      if (!silent) showNotice('点名表格已保存')
-      return
+    try {
+      localSaved = await saveLocalExcelFile({ silent, allowPicker })
+    } catch (localError) {
+      if (!serverSaved || localError?.name !== 'AbortError') throw localError
     }
-    downloadBlob(blob, filename)
-    if (!silent) showNotice('浏览器已下载点名表格')
+    if (!silent) autoSaveEnabled.value = true
+    if (!silent && serverSaved && localSaved) showNotice('服务器与本地 Excel 已保存')
+    else if (!silent && serverSaved) showNotice('服务器已保存')
+    else if (!silent && localSaved) showNotice('本地 Excel 已保存')
   } catch (error) {
     if (error?.name !== 'AbortError') {
       console.error(error)
@@ -2660,6 +2682,22 @@ onUnmounted(() => {
                 </button>
               </div>
             </label>
+          </div>
+
+          <div class="entry-sync-row">
+            <label class="profile-sync-control">
+              <input v-model="profileSyncConfig.enabled" type="checkbox" @change="toggleProfileSync" />
+              <span>共享呼号资料库</span>
+            </label>
+            <button
+              type="button"
+              class="profile-sync-button"
+              :disabled="profileSyncBusy || !profileSyncConfig.enabled"
+              @click="syncSharedProfiles({ silent: false })"
+            >
+              {{ profileSyncBusy ? '同步中' : '同步' }}
+            </button>
+            <span v-if="profileSyncStatus" class="profile-sync-status">{{ profileSyncStatus }}</span>
           </div>
 
         <div class="inline-featured-grid">
@@ -3118,6 +3156,33 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <div v-if="aboutOpen" class="modal-backdrop" @click.self="aboutOpen = false">
+      <div class="about-modal">
+        <div class="modal-head">
+          <h2>关于台网点名主控台</h2>
+          <button type="button" class="icon-button" title="关闭" @click="aboutOpen = false">X</button>
+        </div>
+        <p>
+          台网点名主控台用于业余无线电台网活动记录，支持从 FMO、MMDVM、HAMBOX、BM DMR 等监听源选取友台，
+          快速登记呼号、QTH、设备、功率、模式和信号报告，并导出 Excel 台网日志。
+        </p>
+        <p>
+          本软件由 BH1JSS 机婶婶贡献。网络版仅提供 BM DMR 模式测试，完整监听和本地设备接入建议使用本地版。
+        </p>
+        <div class="about-actions">
+          <a class="footer-link" href="https://github.com/54dashayu/ham-net-checkin" target="_blank" rel="noreferrer">
+            <svg aria-hidden="true" viewBox="0 0 19 19">
+              <use :href="`${serverBasePath}/icons.svg#github-icon`"></use>
+            </svg>
+            GitHub 仓库
+          </a>
+          <button type="button" class="tool-button" @click="authorQrOpen = true">
+            联系作者
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="recordEditorOpen" class="modal-backdrop" @click.self="closeRecordEditor">
       <form class="record-modal" @submit.prevent="saveRecordEditor">
         <div class="panel-heading">
@@ -3311,19 +3376,15 @@ onUnmounted(() => {
 
     <footer class="app-footer">
       <span>台网点名主控台 由 BH1JSS 机婶婶 贡献</span>
-      <label class="profile-sync-control">
-        <input v-model="profileSyncConfig.enabled" type="checkbox" @change="toggleProfileSync" />
-        <span>共享呼号资料库</span>
-      </label>
       <button
         type="button"
-        class="profile-sync-button"
-        :disabled="profileSyncBusy || !profileSyncConfig.enabled"
-        @click="syncSharedProfiles({ silent: false })"
+        class="footer-link footer-button"
+        title="关于台网点名主控台"
+        @click="aboutOpen = true"
       >
-        {{ profileSyncBusy ? '同步中' : '同步' }}
+        <Info :size="18" />
+        关于
       </button>
-      <span v-if="profileSyncStatus" class="profile-sync-status">{{ profileSyncStatus }}</span>
       <a class="footer-link" href="https://github.com/54dashayu/ham-net-checkin" target="_blank" rel="noreferrer">
         <svg aria-hidden="true" viewBox="0 0 19 19">
           <use :href="`${serverBasePath}/icons.svg#github-icon`"></use>

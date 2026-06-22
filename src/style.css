@@ -334,11 +334,12 @@ h2 {
 
 .combo-input {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px 68px;
+  grid-template-columns: minmax(0, 1fr) 38px 70px;
 }
 
 .combo-input input {
   border-radius: 6px 0 0 6px;
+  min-width: 0;
 }
 
 .combo-input .combo-clear-button {
@@ -384,15 +385,15 @@ h2 {
 }
 
 .clearable-input input {
-  padding-right: 42px;
+  padding-right: 44px;
   width: 100%;
 }
 
-.input-clear-button {
+.input-clear-button,
+.combo-clear-button {
   align-items: center;
-  background: #ffffff;
+  background: #f9fcfa;
   border: 1px solid #bdd2c8;
-  border-radius: 6px;
   color: #63756e;
   display: inline-flex;
   font-family: Arial, Helvetica, sans-serif;
@@ -401,27 +402,27 @@ h2 {
   height: 34px;
   justify-content: center;
   line-height: 1;
+  min-width: 34px;
+  overflow: hidden;
   padding: 0;
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
+  text-align: center;
   width: 34px;
 }
 
+.input-clear-button {
+  border-radius: 6px;
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 .combo-clear-button {
-  align-items: center;
-  background: #ffffff;
-  border: 1px solid var(--line-dark);
-  color: #63756e;
-  display: inline-flex;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 15px;
-  font-weight: 900;
-  justify-content: center;
-  line-height: 1;
+  border-color: var(--line-dark);
+  border-radius: 0;
+  height: auto;
   min-height: 34px;
-  padding: 0;
+  width: 38px;
 }
 
 .input-clear-button:hover,
@@ -443,7 +444,7 @@ h2 {
 }
 
 .combo-clear-button:disabled:hover {
-  background: #ffffff;
+  background: #f9fcfa;
   border-color: var(--line-dark);
   color: var(--muted);
 }
@@ -569,6 +570,15 @@ h2 {
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(0, 1fr) 150px;
+}
+
+.entry-sync-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  min-height: 28px;
+  padding: 0 2px;
 }
 
 .fmo-config {
@@ -984,9 +994,13 @@ tbody tr:nth-child(even) {
 
 .footer-link {
   align-items: center;
+  background: transparent;
+  border: 0;
   color: #55645e;
   display: inline-flex;
   gap: 9px;
+  font: inherit;
+  padding: 0;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -1041,6 +1055,10 @@ tbody tr:nth-child(even) {
 
 .footer-link svg path {
   fill: currentColor;
+}
+
+.footer-button {
+  cursor: pointer;
 }
 
 .modal-backdrop {
@@ -1114,6 +1132,44 @@ tbody tr:nth-child(even) {
   font-size: 13px;
   margin: 0;
   text-align: center;
+}
+
+.about-modal {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(20, 34, 28, 0.22);
+  display: grid;
+  gap: 12px;
+  max-width: 560px;
+  padding: 16px;
+  width: min(560px, calc(100vw - 36px));
+}
+
+.about-modal .modal-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.about-modal h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.about-modal p {
+  color: #45504c;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.about-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .modal-actions {
