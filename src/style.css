@@ -991,6 +991,45 @@ tbody tr:nth-child(even) {
   white-space: nowrap;
 }
 
+.profile-sync-control {
+  align-items: center;
+  color: #55645e;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.profile-sync-control input {
+  accent-color: var(--green);
+  height: 16px;
+  width: 16px;
+}
+
+.profile-sync-button {
+  appearance: none;
+  background: #fff;
+  border: 1px solid var(--line-dark);
+  border-radius: 6px;
+  color: #40504a;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+.profile-sync-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.profile-sync-status {
+  color: #6f7d77;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .footer-link:hover {
   color: var(--accent);
 }

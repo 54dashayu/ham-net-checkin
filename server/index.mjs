@@ -54,9 +54,21 @@ const sendJson = (res, status, payload) => {
   send(res, status, JSON.stringify(payload), jsonHeaders)
 }
 
+const profileCorsHeaders = {
+  ...jsonHeaders,
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET,POST,OPTIONS',
+  'access-control-allow-headers': 'content-type'
+}
+
+const sendProfileJson = (res, status, payload) => {
+  send(res, status, JSON.stringify(payload), profileCorsHeaders)
+}
+
 async function ensureDirs() {
   await fs.mkdir(path.join(dataDir, 'checkins'), { recursive: true })
   await fs.mkdir(path.join(dataDir, 'logs'), { recursive: true })
+  await fs.mkdir(path.join(dataDir, 'profiles'), { recursive: true })
 }
 
 function getClientIp(req) {
@@ -111,6 +123,125 @@ function formatBytes(value) {
 
 function normalizeMonitorCallsign(value) {
   return String(value || '').trim().toUpperCase()
+}
+
+const profileFields = ['qth', 'device', 'power', 'mode', 'signal']
+
+const sharedProfilesFile = () => path.join(dataDir, 'profiles', 'shared-profiles.json')
+
+function uniqueProfileValues(values, limit = 48) {
+  return [
+    ...new Set(
+      values
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    )
+  ].slice(0, limit)
+}
+
+function normalizeSharedProfile(profile) {
+  const callsign = normalizeMonitorCallsign(profile?.callsign)
+  const history = Object.fromEntries(
+    profileFields.map((key) => {
+      const values = [
+        profile?.[key],
+        ...((profile?.history && Array.isArray(profile.history[key]) && profile.history[key]) || [])
+      ]
+      return [key, uniqueProfileValues(values)]
+    })
+  )
+  return {
+    callsign,
+    qth: history.qth[0] || '',
+    device: history.device[0] || '',
+    power: history.power[0] || '',
+    mode: history.mode[0] || '',
+    signal: history.signal[0] || '',
+    lastCheckinAt: String(profile?.lastCheckinAt || profile?.time || ''),
+    updatedAt: String(profile?.updatedAt || new Date().toISOString()),
+    history
+  }
+}
+
+function mergeSharedProfile(baseProfile, incomingProfile) {
+  const base = normalizeSharedProfile(baseProfile || {})
+  const incoming = normalizeSharedProfile(incomingProfile || {})
+  if (!incoming.callsign) return base
+  const history = Object.fromEntries(
+    profileFields.map((key) => [
+      key,
+      uniqueProfileValues([
+        incoming[key],
+        ...(incoming.history?.[key] || []),
+        base[key],
+        ...(base.history?.[key] || [])
+      ])
+    ])
+  )
+  const latestTime = [incoming.lastCheckinAt, base.lastCheckinAt]
+    .filter(Boolean)
+    .sort()
+    .at(-1) || ''
+
+  return {
+    callsign: incoming.callsign,
+    qth: incoming.qth || base.qth || history.qth[0] || '',
+    device: incoming.device || base.device || history.device[0] || '',
+    power: incoming.power || base.power || history.power[0] || '',
+    mode: incoming.mode || base.mode || history.mode[0] || '',
+    signal: incoming.signal || base.signal || history.signal[0] || '',
+    lastCheckinAt: latestTime,
+    updatedAt: new Date().toISOString(),
+    history
+  }
+}
+
+async function readSharedProfiles() {
+  try {
+    const raw = await fs.readFile(sharedProfilesFile(), 'utf8')
+    const payload = JSON.parse(raw)
+    const profiles = Array.isArray(payload.profiles)
+      ? payload.profiles.map(normalizeSharedProfile).filter((profile) => profile.callsign)
+      : []
+    return {
+      version: Number(payload.version || 1),
+      updatedAt: String(payload.updatedAt || ''),
+      profiles
+    }
+  } catch {
+    return { version: 1, updatedAt: '', profiles: [] }
+  }
+}
+
+async function writeSharedProfiles(payload) {
+  const file = sharedProfilesFile()
+  const tmpFile = `${file}.tmp`
+  await fs.mkdir(path.dirname(file), { recursive: true })
+  await fs.writeFile(tmpFile, JSON.stringify(payload, null, 2), 'utf8')
+  await fs.rename(tmpFile, file)
+}
+
+function getSharedProfileStats(profiles) {
+  const callsigns = new Set()
+  const qths = new Set()
+  const devices = new Set()
+  let entries = 0
+  profiles.forEach((profile) => {
+    const normalized = normalizeSharedProfile(profile)
+    if (normalized.callsign) callsigns.add(normalized.callsign)
+    profileFields.forEach((key) => {
+      const values = uniqueProfileValues([normalized[key], ...(normalized.history?.[key] || [])], 100)
+      entries += values.length
+      if (key === 'qth') values.forEach((value) => qths.add(value))
+      if (key === 'device') values.forEach((value) => devices.add(value))
+    })
+  })
+  return {
+    entries,
+    callsigns: callsigns.size,
+    qths: qths.size,
+    devices: devices.size
+  }
 }
 
 function getExcelFilename(item) {
@@ -478,6 +609,67 @@ async function saveCheckin(req, res) {
   })
 }
 
+async function pullSharedProfiles(req, res) {
+  const payload = await readSharedProfiles()
+  await logUsage(req, 'profiles-pull', { count: payload.profiles.length })
+  sendProfileJson(res, 200, {
+    ok: true,
+    version: payload.version,
+    updatedAt: payload.updatedAt,
+    count: payload.profiles.length,
+    stats: getSharedProfileStats(payload.profiles),
+    profiles: payload.profiles
+  })
+}
+
+async function pushSharedProfiles(req, res) {
+  const body = await readBody(req, 2 * 1024 * 1024)
+  const payload = JSON.parse(body || '{}')
+  const incomingProfiles = Array.isArray(payload.profiles) ? payload.profiles.slice(0, 2000) : []
+  const normalizedIncoming = incomingProfiles
+    .map(normalizeSharedProfile)
+    .filter((profile) => profile.callsign)
+    .filter((profile) =>
+      profileFields.some((key) => profile[key] || (profile.history?.[key] || []).length)
+    )
+
+  const current = await readSharedProfiles()
+  const profileMap = new Map(
+    current.profiles
+      .map(normalizeSharedProfile)
+      .filter((profile) => profile.callsign)
+      .map((profile) => [profile.callsign, profile])
+  )
+  const mergedCallsigns = new Set()
+  normalizedIncoming.forEach((profile) => {
+    profileMap.set(profile.callsign, mergeSharedProfile(profileMap.get(profile.callsign), profile))
+    mergedCallsigns.add(profile.callsign)
+  })
+
+  const profiles = [...profileMap.values()].sort((a, b) => a.callsign.localeCompare(b.callsign))
+  const updatedAt = new Date().toISOString()
+  await writeSharedProfiles({
+    version: 1,
+    updatedAt,
+    profiles
+  })
+  await logUsage(req, 'profiles-push', {
+    accepted: normalizedIncoming.length,
+    merged: mergedCallsigns.size,
+    total: profiles.length,
+    client: payload.client || {}
+  })
+  sendProfileJson(res, 200, {
+    ok: true,
+    accepted: normalizedIncoming.length,
+    merged: mergedCallsigns.size,
+    callsigns: [...mergedCallsigns],
+    total: profiles.length,
+    updatedAt,
+    stats: getSharedProfileStats(profiles)
+  })
+}
+
 async function listCheckins() {
   const base = path.join(dataDir, 'checkins')
   let names = []
@@ -692,14 +884,16 @@ async function enrichCheckins(checkins, usage) {
 
 async function monitorPage(req, res) {
   if (!requireAdmin(req, res)) return
-  const [rawCheckins, usage, baseProfileStats] = await Promise.all([
+  const [rawCheckins, usage, baseProfileStats, sharedProfilePayload] = await Promise.all([
     listCheckins(),
     readUsage(0),
-    readBaseProfileStats()
+    readBaseProfileStats(),
+    readSharedProfiles()
   ])
   const checkins = await enrichCheckins(rawCheckins, usage)
   const totalRecords = checkins.reduce((sum, item) => sum + Number(item.recordCount || 0), 0)
   const profileStats = collectProfileStats(checkins, baseProfileStats)
+  const sharedProfileStats = getSharedProfileStats(sharedProfilePayload.profiles)
   const callsignStats = collectCallsignStats(checkins)
   const topCallsignStats = callsignStats.slice(0, 20)
   const usageStats = collectUsageStats(usage)
@@ -773,6 +967,7 @@ async function monitorPage(req, res) {
       <div class="card"><div>登录独立 IP</div><div class="num">${usageStats.loginUniqueIpCount}</div></div>
       <div class="card"><div>合并后呼号</div><div class="num">${callsignStats.length}</div><div class="hint">大小写已合并</div></div>
       <div class="card"><div>基础库 呼号 / QTH / 设备</div><div class="num" style="font-size:24px">${profileStats.base.callsigns} / ${profileStats.base.qths} / ${profileStats.base.devices}</div><div class="hint">基础条目 ${profileStats.base.entries}</div></div>
+      <div class="card"><div>共享库 呼号 / QTH / 设备</div><div class="num" style="font-size:24px">${sharedProfileStats.callsigns} / ${sharedProfileStats.qths} / ${sharedProfileStats.devices}</div><div class="hint">共享条目 ${sharedProfileStats.entries}</div></div>
       <div class="card"><div>本地库新增条目</div><div class="num">${profileStats.added.entries}</div><div class="hint">快照 ${profileStats.snapshotAt ? formatBjt(profileStats.snapshotAt) : '按记录推算'}</div></div>
       <div class="card"><div>新增 呼号 / QTH / 设备</div><div class="num" style="font-size:24px">${profileStats.added.callsigns} / ${profileStats.added.qths} / ${profileStats.added.devices}</div></div>
       <div class="card"><div>最近保存</div><div class="num" style="font-size:18px">${checkins[0]?.savedAt ? formatBjt(checkins[0].savedAt) : '暂无'}</div><div class="hint">UTC+8 北京时间</div></div>
@@ -1027,7 +1222,12 @@ export async function startServer({ host = '127.0.0.1', port = defaultPort } = {
     try {
       const url = getRequestUrl(req)
       req.appUrl = url
+      if (req.method === 'OPTIONS' && url.pathname.startsWith('/api/profiles/')) {
+        return send(res, 204, '', profileCorsHeaders)
+      }
       if (req.method === 'POST' && url.pathname === '/api/checkins') return saveCheckin(req, res)
+      if (req.method === 'GET' && url.pathname === '/api/profiles/pull') return pullSharedProfiles(req, res)
+      if (req.method === 'POST' && url.pathname === '/api/profiles/push') return pushSharedProfiles(req, res)
       if (req.method === 'GET' && url.pathname === '/api/brandmeister/last-heard') return fetchBrandmeisterLastHeard(req, res)
       if (req.method === 'GET' && url.pathname === '/api/brandmeister/device') return fetchBrandmeisterDevice(req, res)
       if (req.method === 'GET' && url.pathname === '/mmdvm-proxy') return proxyMmdvmPage(req, res)

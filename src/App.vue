@@ -33,6 +33,8 @@ import { fetchMmdvmLastHeard } from './services/mmdvmClient'
 
 const STORAGE_KEY = 'ham-net-checkin-records-v1'
 const PROFILE_KEY = 'ham-net-checkin-profiles-v1'
+const PROFILE_DIRTY_KEY = 'ham-net-checkin-profile-dirty-v1'
+const PROFILE_SYNC_CONFIG_KEY = 'ham-net-checkin-profile-sync-v1'
 const FMO_CONFIG_KEY = 'ham-net-checkin-fmo-config-v1'
 const ACTIVITY_CONFIG_KEY = 'ham-net-checkin-activity-config-v1'
 const CONTROL_TX_STALE_MS = {
@@ -53,6 +55,9 @@ const currentActivityId = ref(initialActivityId)
 const scopedKey = (key) => (currentActivityId.value ? `${key}:${currentActivityId.value}` : key)
 const serverBasePath = window.location.pathname.startsWith('/checkin') ? '/checkin' : ''
 const serverApiPath = (path) => `${serverBasePath}${path}`
+const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || 'https://fmo.bh1jss.net/checkin'
+const sharedProfileApiPath = (path) =>
+  isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
 
 const formatLocalDate = (date = new Date()) => {
@@ -84,6 +89,7 @@ const emptyForm = () => ({
 
 const records = ref([])
 const profiles = ref([])
+const dirtyProfileCallsigns = ref([])
 const form = reactive(emptyForm())
 const editingId = ref(null)
 const searchText = ref('')
@@ -102,6 +108,15 @@ const publicSession = reactive({
   activityId: initialActivityId || 'default',
   downloads: 0
 })
+const profileSyncConfig = reactive({
+  enabled: true,
+  lastPulledAt: '',
+  lastPushedAt: ''
+})
+const profileSyncStatus = ref('')
+const profileSyncBusy = ref(false)
+const profileSyncTimer = ref(null)
+const profileSyncDebounceTimer = ref(null)
 const publicSessionTimer = ref(null)
 const fileInput = ref(null)
 const dbFileInput = ref(null)
@@ -702,6 +717,14 @@ const persistProfiles = () => {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profiles.value))
 }
 
+const persistDirtyProfiles = () => {
+  localStorage.setItem(PROFILE_DIRTY_KEY, JSON.stringify(dirtyProfileCallsigns.value))
+}
+
+const persistProfileSyncConfig = () => {
+  localStorage.setItem(PROFILE_SYNC_CONFIG_KEY, JSON.stringify(profileSyncConfig))
+}
+
 const persistFmoConfig = () => {
   localStorage.setItem(FMO_CONFIG_KEY, JSON.stringify(fmoConfig))
 }
@@ -725,6 +748,34 @@ const loadProfiles = () => {
     profiles.value = Array.isArray(saved) ? saved.map(normalizeProfile).filter((profile) => profile.callsign) : []
   } catch {
     profiles.value = []
+  }
+}
+
+const loadDirtyProfiles = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROFILE_DIRTY_KEY) || '[]')
+    dirtyProfileCallsigns.value = Array.isArray(saved)
+      ? [...new Set(saved.map(normalizeCallsign).filter(Boolean))]
+      : []
+  } catch {
+    dirtyProfileCallsigns.value = []
+  }
+}
+
+const loadProfileSyncConfig = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROFILE_SYNC_CONFIG_KEY) || '{}')
+    Object.assign(profileSyncConfig, {
+      enabled: saved.enabled !== false,
+      lastPulledAt: saved.lastPulledAt || '',
+      lastPushedAt: saved.lastPushedAt || ''
+    })
+  } catch {
+    Object.assign(profileSyncConfig, {
+      enabled: true,
+      lastPulledAt: '',
+      lastPushedAt: ''
+    })
   }
 }
 
@@ -866,7 +917,7 @@ const mergeProfileEntry = (baseProfile, entry, { preferIncoming = true } = {}) =
   }
 }
 
-const updateProfile = (record) => {
+const updateProfile = (record, { markDirty = true } = {}) => {
   const callsign = normalizeCallsign(record.callsign || '')
   if (!callsign) return
   const profileMap = new Map(
@@ -877,6 +928,10 @@ const updateProfile = (record) => {
   )
   profileMap.set(callsign, mergeProfileEntry(profileMap.get(callsign), record))
   profiles.value = [...profileMap.values()]
+  if (markDirty) {
+    markProfileDirty([callsign])
+    scheduleSharedProfileSync()
+  }
 }
 
 const mergeProfiles = (nextProfiles, options = {}) => {
@@ -891,6 +946,117 @@ const mergeProfiles = (nextProfiles, options = {}) => {
     if (callsign) profileMap.set(callsign, mergeProfileEntry(profileMap.get(callsign), profile, options))
   })
   profiles.value = [...profileMap.values()]
+}
+
+const markProfileDirty = (callsigns) => {
+  const next = new Set(dirtyProfileCallsigns.value)
+  callsigns.map(normalizeCallsign).filter(Boolean).forEach((callsign) => next.add(callsign))
+  dirtyProfileCallsigns.value = [...next]
+  persistDirtyProfiles()
+}
+
+const clearDirtyProfiles = (callsigns) => {
+  const removed = new Set(callsigns.map(normalizeCallsign).filter(Boolean))
+  dirtyProfileCallsigns.value = dirtyProfileCallsigns.value.filter((callsign) => !removed.has(callsign))
+  persistDirtyProfiles()
+}
+
+const sharedProfilePayload = (profile) => {
+  const normalized = normalizeProfile(profile)
+  const history = Object.fromEntries(
+    profileFields.map((key) => [
+      key,
+      uniqueRecentValues([normalized[key], ...(normalized.history?.[key] || [])], 24)
+    ])
+  )
+  return {
+    callsign: normalized.callsign,
+    qth: history.qth[0] || '',
+    device: history.device[0] || '',
+    power: history.power[0] || '',
+    mode: history.mode[0] || '',
+    signal: history.signal[0] || '',
+    lastCheckinAt: normalized.lastCheckinAt || '',
+    updatedAt: normalized.updatedAt || new Date().toISOString(),
+    history
+  }
+}
+
+const getDirtyProfilesForSync = () => {
+  const dirtySet = new Set(dirtyProfileCallsigns.value)
+  return profiles.value
+    .map(normalizeProfile)
+    .filter((profile) => profile.callsign && dirtySet.has(profile.callsign))
+    .map(sharedProfilePayload)
+}
+
+const pullSharedProfiles = async ({ silent = false } = {}) => {
+  if (!profileSyncConfig.enabled) return null
+  const response = await fetch(sharedProfileApiPath('/api/profiles/pull'), { cache: 'no-store' })
+  const data = await response.json()
+  if (!response.ok || !data?.ok) throw new Error(data?.error || `共享库拉取失败：HTTP ${response.status}`)
+  const sharedProfiles = Array.isArray(data.profiles) ? data.profiles : []
+  if (sharedProfiles.length) mergeProfiles(sharedProfiles, { preferIncoming: false })
+  profileSyncConfig.lastPulledAt = new Date().toISOString()
+  persistProfileSyncConfig()
+  if (!silent) showNotice(`共享库已同步 ${sharedProfiles.length} 个呼号`)
+  return data
+}
+
+const pushSharedProfiles = async () => {
+  if (!profileSyncConfig.enabled) return null
+  const dirtyProfiles = getDirtyProfilesForSync()
+  if (!dirtyProfiles.length) return null
+  const response = await fetch(sharedProfileApiPath('/api/profiles/push'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      profiles: dirtyProfiles,
+      client: {
+        url: window.location.href,
+        userAgent: navigator.userAgent,
+        pushedAt: new Date().toISOString()
+      }
+    })
+  })
+  const data = await response.json()
+  if (!response.ok || !data?.ok) throw new Error(data?.error || `共享库回馈失败：HTTP ${response.status}`)
+  clearDirtyProfiles(Array.isArray(data.callsigns) ? data.callsigns : dirtyProfiles.map((profile) => profile.callsign))
+  profileSyncConfig.lastPushedAt = new Date().toISOString()
+  persistProfileSyncConfig()
+  return data
+}
+
+const syncSharedProfiles = async ({ silent = false } = {}) => {
+  if (!profileSyncConfig.enabled || profileSyncBusy.value) return
+  profileSyncBusy.value = true
+  profileSyncStatus.value = silent ? profileSyncStatus.value : '同步中'
+  try {
+    const pushed = await pushSharedProfiles()
+    const pulled = await pullSharedProfiles({ silent: true })
+    const pushedCount = pushed?.merged || 0
+    const pulledCount = pulled?.count || 0
+    profileSyncStatus.value = `共享库 ${pulledCount} 个呼号${pushedCount ? `，回馈 ${pushedCount} 个` : ''}`
+    if (!silent) showNotice('共享呼号资料库已同步')
+  } catch (error) {
+    profileSyncStatus.value = '共享库同步失败'
+    if (!silent) showNotice(error?.message || '共享库同步失败')
+  } finally {
+    profileSyncBusy.value = false
+  }
+}
+
+const scheduleSharedProfileSync = () => {
+  if (!profileSyncConfig.enabled) return
+  window.clearTimeout(profileSyncDebounceTimer.value)
+  profileSyncDebounceTimer.value = window.setTimeout(() => {
+    syncSharedProfiles({ silent: true })
+  }, 1800)
+}
+
+const toggleProfileSync = () => {
+  persistProfileSyncConfig()
+  if (profileSyncConfig.enabled) syncSharedProfiles({ silent: false })
 }
 
 const getProfileStatsSnapshot = () => {
@@ -2199,6 +2365,8 @@ const importJson = async (event) => {
     }))
     records.value = normalized.filter((record) => record.callsign)
     mergeProfiles(records.value.map((record) => ({ ...record, lastCheckinAt: record.time })))
+    markProfileDirty(records.value.map((record) => record.callsign))
+    scheduleSharedProfileSync()
     showNotice('JSON 备份已导入')
   } catch {
     showNotice('导入失败，请确认是本软件导出的 JSON 文件')
@@ -2264,6 +2432,8 @@ const importDb3 = async (event) => {
 
     const profileEntries = [...qthProfiles, ...recordProfiles].filter((profile) => profile.callsign)
     mergeProfiles(profileEntries)
+    markProfileDirty(profileEntries.map((profile) => profile.callsign))
+    scheduleSharedProfileSync()
     db.close()
     const callsignCount = new Set(profileEntries.map((profile) => profile.callsign).filter(Boolean)).size
     showNotice(`已导入 ${importedRecords.length} 条旧库资料，更新 ${callsignCount} 个呼号画像`)
@@ -2284,6 +2454,7 @@ watch(
   { deep: true }
 )
 watch(profiles, persistProfiles, { deep: true })
+watch(profileSyncConfig, persistProfileSyncConfig, { deep: true })
 watch(fmoConfig, persistFmoConfig, { deep: true })
 watch(
   activityConfig,
@@ -2340,22 +2511,27 @@ watch(
 onMounted(() => {
   loadPublicSession()
   loadRecords()
+  loadProfileSyncConfig()
+  loadDirtyProfiles()
   loadProfiles()
-  loadBaseProfiles()
+  loadBaseProfiles().finally(() => syncSharedProfiles({ silent: true }))
   loadFmoConfig()
   loadActivityConfig()
   publicSessionTimer.value = window.setInterval(() => {
     if (isPublicWebVersion.value) publicElapsedMs.value = Date.now() - publicSession.startedAt
   }, 1000)
+  profileSyncTimer.value = window.setInterval(() => syncSharedProfiles({ silent: true }), 10 * 60 * 1000)
   startFmoAutoRefresh()
 })
 
 onUnmounted(() => {
   window.clearInterval(fmoRefreshTimer.value)
   window.clearInterval(publicSessionTimer.value)
+  window.clearInterval(profileSyncTimer.value)
   window.clearTimeout(monitorRestartTimer.value)
   window.clearTimeout(controlTxClearTimer.value)
   window.clearTimeout(autoSaveTimer.value)
+  window.clearTimeout(profileSyncDebounceTimer.value)
   closeFmoClient()
 })
 </script>
@@ -3135,6 +3311,19 @@ onUnmounted(() => {
 
     <footer class="app-footer">
       <span>台网点名主控台 由 BH1JSS 机婶婶 贡献</span>
+      <label class="profile-sync-control">
+        <input v-model="profileSyncConfig.enabled" type="checkbox" @change="toggleProfileSync" />
+        <span>共享呼号资料库</span>
+      </label>
+      <button
+        type="button"
+        class="profile-sync-button"
+        :disabled="profileSyncBusy || !profileSyncConfig.enabled"
+        @click="syncSharedProfiles({ silent: false })"
+      >
+        {{ profileSyncBusy ? '同步中' : '同步' }}
+      </button>
+      <span v-if="profileSyncStatus" class="profile-sync-status">{{ profileSyncStatus }}</span>
       <a class="footer-link" href="https://github.com/54dashayu/ham-net-checkin" target="_blank" rel="noreferrer">
         <svg aria-hidden="true" viewBox="0 0 19 19">
           <use :href="`${serverBasePath}/icons.svg#github-icon`"></use>
