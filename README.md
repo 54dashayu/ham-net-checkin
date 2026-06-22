@@ -14,22 +14,6 @@
 - 备份：导出/导入本软件 JSON 备份。
 - 迁移：导入原 Windows 点名软件 `.db3`，读取 `qsolog`、`qth` 等表生成记录和历史档案。
 
-## 参考资料
-
-原 Windows 点名软件包已解压到：
-
-```text
-references/original-windows-tool/
-```
-
-已确认的主要 SQLite 表：
-
-- `qsolog`: 点名记录，包含 `callsign`、`qth`、`rig`、`power`、`ant`、`modal`、`freq`、`rst`、`rst1`、`qsotime`、`op` 等字段。
-- `qth`: 呼号与 QTH 历史资料。
-- `rig`: 设备与模式候选。
-- `power`: 功率候选。
-- `ant`: 天线候选。
-- `taiwang`: 台网活动信息。
 
 ## 开发
 
