@@ -23,7 +23,7 @@ async function createWindow() {
     minHeight: 760,
     title: 'HAM 台网点名主控台',
     show: false,
-    icon: path.join(rootDir, 'public', 'favicon.svg'),
+    icon: path.join(rootDir, 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

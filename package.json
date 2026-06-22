@@ -1,7 +1,7 @@
 {
   "name": "ham-net-checkin",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.7",
   "productName": "HAM 台网点名主控台",
   "type": "module",
   "main": "electron/main.mjs",
@@ -21,12 +21,16 @@
     },
     "files": [
       "dist/**/*",
+      "build/icon.ico",
+      "build/icon.png",
       "electron/**/*",
       "server/**/*",
       "public/favicon.svg",
+      "public/favicon.png",
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
