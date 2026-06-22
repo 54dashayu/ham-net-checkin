@@ -56,7 +56,14 @@ const currentActivityId = ref(initialActivityId)
 const scopedKey = (key) => (currentActivityId.value ? `${key}:${currentActivityId.value}` : key)
 const serverBasePath = window.location.pathname.startsWith('/checkin') ? '/checkin' : ''
 const serverApiPath = (path) => `${serverBasePath}${path}`
-const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || 'https://fmo.bh1jss.net/checkin'
+const getDefaultSharedProfileApiBase = () => {
+  const hostname = window.location.hostname
+  if ((hostname === '127.0.0.1' || hostname === 'localhost') && window.location.port === '5173') {
+    return 'http://127.0.0.1:37173'
+  }
+  return 'https://fmo.bh1jss.net/checkin'
+}
+const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || getDefaultSharedProfileApiBase()
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
@@ -105,13 +112,19 @@ const autoSaveTimer = ref(null)
 const serverSaveAvailable = ref(false)
 const authorQrOpen = ref(false)
 const aboutOpen = ref(false)
+const profileRegistrationOpen = ref(false)
 const publicSession = reactive({
   startedAt: Date.now(),
   activityId: initialActivityId || 'default',
   downloads: 0
 })
 const profileSyncConfig = reactive({
-  enabled: true,
+  enabled: false,
+  registrationCallsign: '',
+  cracCertificate: '',
+  registrationQth: '',
+  registrationRepeater: '',
+  verificationCode: '',
   lastPulledAt: '',
   lastPushedAt: ''
 })
@@ -120,6 +133,8 @@ const profileSyncBusy = ref(false)
 const profileSyncTimer = ref(null)
 const profileSyncDebounceTimer = ref(null)
 const publicSessionTimer = ref(null)
+const authorQrTitle = ref('联系作者')
+const authorQrHint = ref('请使用微信扫码')
 const fileInput = ref(null)
 const dbFileInput = ref(null)
 const notice = ref('')
@@ -595,6 +610,14 @@ const publicTimeRemainingText = computed(() => {
   const seconds = Math.floor((remaining % 60000) / 1000)
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 })
+const hasProfileSyncRegistration = computed(
+  () =>
+    Boolean(normalizeCallsign(profileSyncConfig.registrationCallsign)) &&
+    String(profileSyncConfig.cracCertificate || '').trim().length >= 4 &&
+    String(profileSyncConfig.registrationQth || '').trim().length >= 2 &&
+    String(profileSyncConfig.registrationRepeater || '').trim().length >= 2 &&
+    String(profileSyncConfig.verificationCode || '').trim().length >= 4
+)
 const publicWebExpired = computed(
   () => isPublicWebVersion.value && publicElapsedMs.value >= PUBLIC_WEB_LIMITS.durationMs
 )
@@ -768,28 +791,26 @@ const loadProfileSyncConfig = () => {
   try {
     const saved = JSON.parse(localStorage.getItem(PROFILE_SYNC_CONFIG_KEY) || '{}')
     Object.assign(profileSyncConfig, {
-      enabled: saved.enabled !== false,
+      enabled: Boolean(saved.enabled && saved.registrationCallsign && saved.cracCertificate && saved.verificationCode),
+      registrationCallsign: normalizeCallsign(saved.registrationCallsign || ''),
+      cracCertificate: String(saved.cracCertificate || '').trim(),
+      registrationQth: String(saved.registrationQth || '').trim(),
+      registrationRepeater: String(saved.registrationRepeater || '').trim(),
+      verificationCode: String(saved.verificationCode || '').trim(),
       lastPulledAt: saved.lastPulledAt || '',
       lastPushedAt: saved.lastPushedAt || ''
     })
   } catch {
     Object.assign(profileSyncConfig, {
-      enabled: true,
+      enabled: false,
+      registrationCallsign: '',
+      cracCertificate: '',
+      registrationQth: '',
+      registrationRepeater: '',
+      verificationCode: '',
       lastPulledAt: '',
       lastPushedAt: ''
     })
-  }
-}
-
-const loadBaseProfiles = async () => {
-  try {
-    const response = await fetch(`${import.meta.env.BASE_URL}base-profiles.json`, { cache: 'no-store' })
-    if (!response.ok) return
-    const payload = await response.json()
-    const baseProfiles = Array.isArray(payload?.profiles) ? payload.profiles : []
-    mergeProfiles(baseProfiles, { preferIncoming: false })
-  } catch (error) {
-    console.warn('基础呼号资料库加载失败:', error)
   }
 }
 
@@ -992,9 +1013,69 @@ const getDirtyProfilesForSync = () => {
     .map(sharedProfilePayload)
 }
 
+const encodeProfileHeader = (value) => encodeURIComponent(String(value || '').trim())
+
+const sharedProfileAuthHeaders = () => ({
+  'x-ham-callsign': normalizeCallsign(profileSyncConfig.registrationCallsign),
+  'x-ham-crac-certificate': String(profileSyncConfig.cracCertificate || '').trim(),
+  'x-ham-registration-qth': encodeProfileHeader(profileSyncConfig.registrationQth),
+  'x-ham-registration-repeater': encodeProfileHeader(profileSyncConfig.registrationRepeater),
+  'x-ham-profile-code': String(profileSyncConfig.verificationCode || '').trim()
+})
+
+const requestProfileRegistration = async () => {
+  const callsign = normalizeCallsign(profileSyncConfig.registrationCallsign || activityConfig.controlCallsign)
+  const cracCertificate = String(profileSyncConfig.cracCertificate || '').trim()
+  const qth = String(profileSyncConfig.registrationQth || '').trim()
+  const repeater = String(profileSyncConfig.registrationRepeater || '').trim()
+  if (!callsign || cracCertificate.length < 4 || qth.length < 2 || repeater.length < 2) {
+    profileRegistrationOpen.value = true
+    profileSyncStatus.value = '请完整填写注册资料'
+    return
+  }
+  profileSyncConfig.registrationCallsign = callsign
+  profileSyncBusy.value = true
+  profileSyncStatus.value = '提交审核中'
+  try {
+    const response = await fetch(sharedProfileApiPath('/api/profiles/register'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        callsign,
+        cracCertificate,
+        qth,
+        repeater
+      })
+    })
+    const data = await response.json()
+    if (!response.ok || !data?.ok) throw new Error(data?.error || '注册申请提交失败')
+    profileSyncStatus.value = data.status === 'approved' ? '已审核，请填写校验码后同步' : '已提交，等待作者审核'
+    showNotice(profileSyncStatus.value)
+  } catch (error) {
+    profileSyncStatus.value = '注册申请提交失败'
+    showNotice(error?.message || '注册申请提交失败')
+  } finally {
+    profileSyncBusy.value = false
+  }
+}
+
+const ensureProfileSyncAuthorized = () => {
+  if (hasProfileSyncRegistration.value) return true
+  profileSyncConfig.enabled = false
+  profileSyncStatus.value = '共享库为注册功能，需审核通过并填写校验码'
+  authorQrTitle.value = '注册共享呼号资料库'
+  authorQrHint.value = '请使用微信扫码'
+  authorQrOpen.value = true
+  return false
+}
+
 const pullSharedProfiles = async ({ silent = false } = {}) => {
   if (!profileSyncConfig.enabled) return null
-  const response = await fetch(sharedProfileApiPath('/api/profiles/pull'), { cache: 'no-store' })
+  if (!ensureProfileSyncAuthorized()) return null
+  const response = await fetch(sharedProfileApiPath('/api/profiles/pull'), {
+    cache: 'no-store',
+    headers: sharedProfileAuthHeaders()
+  })
   const data = await response.json()
   if (!response.ok || !data?.ok) throw new Error(data?.error || `共享库拉取失败：HTTP ${response.status}`)
   const sharedProfiles = Array.isArray(data.profiles) ? data.profiles : []
@@ -1007,11 +1088,12 @@ const pullSharedProfiles = async ({ silent = false } = {}) => {
 
 const pushSharedProfiles = async () => {
   if (!profileSyncConfig.enabled) return null
+  if (!ensureProfileSyncAuthorized()) return null
   const dirtyProfiles = getDirtyProfilesForSync()
   if (!dirtyProfiles.length) return null
   const response = await fetch(sharedProfileApiPath('/api/profiles/push'), {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...sharedProfileAuthHeaders() },
     body: JSON.stringify({
       profiles: dirtyProfiles,
       client: {
@@ -1031,6 +1113,7 @@ const pushSharedProfiles = async () => {
 
 const syncSharedProfiles = async ({ silent = false } = {}) => {
   if (!profileSyncConfig.enabled || profileSyncBusy.value) return
+  if (!ensureProfileSyncAuthorized()) return
   profileSyncBusy.value = true
   profileSyncStatus.value = silent ? profileSyncStatus.value : '同步中'
   try {
@@ -1058,7 +1141,13 @@ const scheduleSharedProfileSync = () => {
 
 const toggleProfileSync = () => {
   persistProfileSyncConfig()
-  if (profileSyncConfig.enabled) syncSharedProfiles({ silent: false })
+  if (profileSyncConfig.enabled) {
+    if (!ensureProfileSyncAuthorized()) {
+      persistProfileSyncConfig()
+      return
+    }
+    syncSharedProfiles({ silent: false })
+  }
 }
 
 const getProfileStatsSnapshot = () => {
@@ -2536,13 +2625,15 @@ onMounted(() => {
   loadProfileSyncConfig()
   loadDirtyProfiles()
   loadProfiles()
-  loadBaseProfiles().finally(() => syncSharedProfiles({ silent: true }))
+  if (profileSyncConfig.enabled) syncSharedProfiles({ silent: true })
   loadFmoConfig()
   loadActivityConfig()
   publicSessionTimer.value = window.setInterval(() => {
     if (isPublicWebVersion.value) publicElapsedMs.value = Date.now() - publicSession.startedAt
   }, 1000)
-  profileSyncTimer.value = window.setInterval(() => syncSharedProfiles({ silent: true }), 10 * 60 * 1000)
+  profileSyncTimer.value = window.setInterval(() => {
+    if (profileSyncConfig.enabled) syncSharedProfiles({ silent: true })
+  }, 10 * 60 * 1000)
   startFmoAutoRefresh()
 })
 
@@ -2682,22 +2773,28 @@ onUnmounted(() => {
                 </button>
               </div>
             </label>
-          </div>
-
-          <div class="entry-sync-row">
-            <label class="profile-sync-control">
-              <input v-model="profileSyncConfig.enabled" type="checkbox" @change="toggleProfileSync" />
-              <span>共享呼号资料库</span>
-            </label>
-            <button
-              type="button"
-              class="profile-sync-button"
-              :disabled="profileSyncBusy || !profileSyncConfig.enabled"
-              @click="syncSharedProfiles({ silent: false })"
-            >
-              {{ profileSyncBusy ? '同步中' : '同步' }}
-            </button>
-            <span v-if="profileSyncStatus" class="profile-sync-status">{{ profileSyncStatus }}</span>
+            <div class="entry-sync-row">
+              <label class="profile-sync-control">
+                <input v-model="profileSyncConfig.enabled" type="checkbox" @change="toggleProfileSync" />
+                <span>共享呼号资料库</span>
+              </label>
+              <button
+                type="button"
+                class="profile-sync-button"
+                :disabled="profileSyncBusy || !profileSyncConfig.enabled || !hasProfileSyncRegistration"
+                @click="syncSharedProfiles({ silent: false })"
+              >
+                {{ profileSyncBusy ? '同步中' : '同步' }}
+              </button>
+              <button
+                type="button"
+                class="profile-sync-button profile-register-button"
+                @click="profileRegistrationOpen = true"
+              >
+                注册
+              </button>
+              <span v-if="profileSyncStatus" class="profile-sync-status">{{ profileSyncStatus }}</span>
+            </div>
           </div>
 
         <div class="inline-featured-grid">
@@ -3148,11 +3245,66 @@ onUnmounted(() => {
     <div v-if="authorQrOpen" class="modal-backdrop compact-modal" @click.self="authorQrOpen = false">
       <div class="author-qr-modal">
         <div class="modal-head">
-          <h2>联系作者获取本地版</h2>
+          <h2>{{ authorQrTitle }}</h2>
           <button type="button" class="icon-button" title="关闭" @click="authorQrOpen = false">X</button>
         </div>
         <img :src="authorQrCodeUrl" alt="作者微信二维码" />
-        <p>请使用微信扫码</p>
+        <p>{{ authorQrHint }}</p>
+      </div>
+    </div>
+
+    <div v-if="profileRegistrationOpen" class="modal-backdrop" @click.self="profileRegistrationOpen = false">
+      <div class="profile-registration-modal">
+        <div class="modal-head">
+          <h2>共享呼号资料库注册</h2>
+          <button type="button" class="icon-button" title="关闭" @click="profileRegistrationOpen = false">X</button>
+        </div>
+        <div class="field-row">
+          <label class="field">
+            <span>注册呼号</span>
+            <input
+              v-model="profileSyncConfig.registrationCallsign"
+              autocomplete="off"
+              placeholder="BH1JSS"
+              @input="handleCallsignInput($event, profileSyncConfig, 'registrationCallsign')"
+              @compositionend="handleCallsignCompositionEnd(profileSyncConfig, 'registrationCallsign')"
+            />
+          </label>
+          <label class="field">
+            <span>CRAC 操作证书号</span>
+            <input v-model="profileSyncConfig.cracCertificate" autocomplete="off" placeholder="操作证书号" />
+          </label>
+        </div>
+        <div class="field-row">
+          <label class="field">
+            <span>常用 QTH</span>
+            <input v-model="profileSyncConfig.registrationQth" autocomplete="off" placeholder="北京 昌平" />
+          </label>
+          <label class="field">
+            <span>常用服务器</span>
+            <input
+              v-model="profileSyncConfig.registrationRepeater"
+              autocomplete="off"
+              placeholder="DMR TG组/反射器 / 本地中继 / FMO服务器"
+            />
+          </label>
+        </div>
+        <label class="field">
+          <span>作者审核通过后填写校验码</span>
+          <input v-model="profileSyncConfig.verificationCode" autocomplete="off" placeholder="校验码" />
+        </label>
+        <div class="profile-registration-actions">
+          <button type="button" class="tool-button" :disabled="profileSyncBusy" @click="requestProfileRegistration">
+            提交审核
+          </button>
+          <button type="button" class="tool-button" @click="authorQrOpen = true">
+            微信联系
+          </button>
+          <button type="button" class="primary-action" :disabled="!hasProfileSyncRegistration" @click="profileSyncConfig.enabled = true; profileRegistrationOpen = false; syncSharedProfiles({ silent: false })">
+            开启同步
+          </button>
+        </div>
+        <p class="modal-hint">提交后需等待作者在后台审核，通过后获得校验码，才可开启共享呼号资料库同步。</p>
       </div>
     </div>
 

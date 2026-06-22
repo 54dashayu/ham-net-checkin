@@ -58,7 +58,8 @@ const profileCorsHeaders = {
   ...jsonHeaders,
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET,POST,OPTIONS',
-  'access-control-allow-headers': 'content-type'
+  'access-control-allow-headers':
+    'content-type,x-ham-callsign,x-ham-crac-certificate,x-ham-registration-qth,x-ham-registration-repeater,x-ham-profile-code'
 }
 
 const sendProfileJson = (res, status, payload) => {
@@ -125,9 +126,46 @@ function normalizeMonitorCallsign(value) {
   return String(value || '').trim().toUpperCase()
 }
 
+function normalizeCracCertificate(value) {
+  return String(value || '').trim().toUpperCase().replace(/\s+/g, '')
+}
+
+function normalizeProfileCode(value) {
+  return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
+function normalizeRegistrationText(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ')
+}
+
+function decodeRegistrationHeader(value) {
+  const text = String(value || '').trim()
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return text
+  }
+}
+
+function getRegistrationId(callsign, cracCertificate) {
+  return crypto
+    .createHash('sha1')
+    .update(`${normalizeMonitorCallsign(callsign)}|${normalizeCracCertificate(cracCertificate)}`)
+    .digest('hex')
+    .slice(0, 16)
+}
+
+function createVerificationCode() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const chars = Array.from(crypto.randomBytes(16), (byte) => alphabet[byte % alphabet.length]).join('')
+  const groups = chars.match(/.{1,4}/g) || [chars]
+  return `HAM-${new Date().getFullYear()}-${groups.join('-')}`
+}
+
 const profileFields = ['qth', 'device', 'power', 'mode', 'signal']
 
 const sharedProfilesFile = () => path.join(dataDir, 'profiles', 'shared-profiles.json')
+const profileRegistrationsFile = () => path.join(dataDir, 'profiles', 'profile-registrations.json')
 
 function uniqueProfileValues(values, limit = 48) {
   return [
@@ -219,6 +257,83 @@ async function writeSharedProfiles(payload) {
   await fs.mkdir(path.dirname(file), { recursive: true })
   await fs.writeFile(tmpFile, JSON.stringify(payload, null, 2), 'utf8')
   await fs.rename(tmpFile, file)
+}
+
+function normalizeProfileRegistration(registration) {
+  const callsign = normalizeMonitorCallsign(registration?.callsign)
+  const cracCertificate = normalizeCracCertificate(registration?.cracCertificate)
+  return {
+    id: registration?.id || getRegistrationId(callsign, cracCertificate),
+    callsign,
+    cracCertificate,
+    qth: String(registration?.qth || '').trim(),
+    repeater: String(registration?.repeater || '').trim(),
+    fmoServer: String(registration?.fmoServer || '').trim(),
+    status: ['approved', 'rejected'].includes(registration?.status) ? registration.status : 'pending',
+    verificationCode: String(registration?.verificationCode || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, ''),
+    submittedAt: String(registration?.submittedAt || new Date().toISOString()),
+    reviewedAt: String(registration?.reviewedAt || ''),
+    updatedAt: String(registration?.updatedAt || new Date().toISOString()),
+    ip: String(registration?.ip || ''),
+    userAgent: String(registration?.userAgent || '')
+  }
+}
+
+async function readProfileRegistrations() {
+  try {
+    const raw = await fs.readFile(profileRegistrationsFile(), 'utf8')
+    const payload = JSON.parse(raw)
+    return Array.isArray(payload.registrations)
+      ? payload.registrations.map(normalizeProfileRegistration).filter((item) => item.callsign && item.cracCertificate)
+      : []
+  } catch {
+    return []
+  }
+}
+
+async function writeProfileRegistrations(registrations) {
+  const file = profileRegistrationsFile()
+  const tmpFile = `${file}.tmp`
+  await fs.mkdir(path.dirname(file), { recursive: true })
+  await fs.writeFile(
+    tmpFile,
+    JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), registrations }, null, 2),
+    'utf8'
+  )
+  await fs.rename(tmpFile, file)
+}
+
+async function requireProfileRegistration(req, res) {
+  const callsign = normalizeMonitorCallsign(req.headers['x-ham-callsign'] || req.appUrl?.searchParams.get('callsign'))
+  const cracCertificate = normalizeCracCertificate(
+    req.headers['x-ham-crac-certificate'] || req.appUrl?.searchParams.get('crac')
+  )
+  const verificationCode = normalizeProfileCode(req.headers['x-ham-profile-code'] || req.appUrl?.searchParams.get('code'))
+  const qth = normalizeRegistrationText(
+    decodeRegistrationHeader(req.headers['x-ham-registration-qth'] || req.appUrl?.searchParams.get('qth'))
+  )
+  const repeater = normalizeRegistrationText(
+    decodeRegistrationHeader(req.headers['x-ham-registration-repeater'] || req.appUrl?.searchParams.get('repeater'))
+  )
+  if (!callsign || !cracCertificate || !qth || !repeater || !verificationCode) {
+    sendProfileJson(res, 403, { ok: false, error: '共享呼号资料库需注册审核后使用。' })
+    return null
+  }
+  const registrations = await readProfileRegistrations()
+  const registration = registrations.find(
+    (item) =>
+      item.callsign === callsign &&
+      item.cracCertificate === cracCertificate &&
+      normalizeRegistrationText(item.qth) === qth &&
+      normalizeRegistrationText(item.repeater) === repeater &&
+      normalizeProfileCode(item.verificationCode) === verificationCode &&
+      item.status === 'approved'
+  )
+  if (!registration) {
+    sendProfileJson(res, 403, { ok: false, error: '注册资料与审核记录不一致，或校验码不正确。' })
+    return null
+  }
+  return registration
 }
 
 function getSharedProfileStats(profiles) {
@@ -610,6 +725,8 @@ async function saveCheckin(req, res) {
 }
 
 async function pullSharedProfiles(req, res) {
+  const registration = await requireProfileRegistration(req, res)
+  if (!registration) return
   const payload = await readSharedProfiles()
   await logUsage(req, 'profiles-pull', { count: payload.profiles.length })
   sendProfileJson(res, 200, {
@@ -623,6 +740,8 @@ async function pullSharedProfiles(req, res) {
 }
 
 async function pushSharedProfiles(req, res) {
+  const registration = await requireProfileRegistration(req, res)
+  if (!registration) return
   const body = await readBody(req, 2 * 1024 * 1024)
   const payload = JSON.parse(body || '{}')
   const incomingProfiles = Array.isArray(payload.profiles) ? payload.profiles.slice(0, 2000) : []
@@ -668,6 +787,85 @@ async function pushSharedProfiles(req, res) {
     updatedAt,
     stats: getSharedProfileStats(profiles)
   })
+}
+
+async function registerSharedProfileAccess(req, res) {
+  const body = await readBody(req, 128 * 1024)
+  const payload = JSON.parse(body || '{}')
+  const callsign = normalizeMonitorCallsign(payload.callsign)
+  const cracCertificate = normalizeCracCertificate(payload.cracCertificate)
+  if (!callsign || !/^[A-Z0-9/]{3,20}$/.test(callsign)) {
+    sendProfileJson(res, 400, { ok: false, error: '请填写有效呼号。' })
+    return
+  }
+  if (!cracCertificate || cracCertificate.length < 4) {
+    sendProfileJson(res, 400, { ok: false, error: '请填写 CRAC 操作证书号。' })
+    return
+  }
+  const id = getRegistrationId(callsign, cracCertificate)
+  const registrations = await readProfileRegistrations()
+  const existing = registrations.find((item) => item.id === id)
+  const now = new Date().toISOString()
+  const next = normalizeProfileRegistration({
+    ...existing,
+    id,
+    callsign,
+    cracCertificate,
+    qth: payload.qth,
+    repeater: payload.repeater,
+    fmoServer: payload.fmoServer,
+    status: existing?.status === 'approved' ? 'approved' : 'pending',
+    verificationCode: existing?.verificationCode || '',
+    submittedAt: existing?.submittedAt || now,
+    updatedAt: now,
+    ip: getClientIp(req),
+    userAgent: req.headers['user-agent'] || ''
+  })
+  const nextRegistrations = [...registrations.filter((item) => item.id !== id), next].sort((a, b) =>
+    String(b.updatedAt).localeCompare(String(a.updatedAt))
+  )
+  await writeProfileRegistrations(nextRegistrations)
+  await logUsage(req, 'profile-registration-submit', {
+    id,
+    callsign,
+    status: next.status,
+    qth: next.qth,
+    repeater: next.repeater,
+    fmoServer: next.fmoServer
+  })
+  sendProfileJson(res, 200, {
+    ok: true,
+    id,
+    callsign,
+    status: next.status,
+    message: next.status === 'approved' ? '注册已审核通过，请填写校验码。' : '注册申请已提交，等待作者审核。'
+  })
+}
+
+async function handleProfileRegistrationAction(req, res, id, action) {
+  if (!requireAdmin(req, res)) return
+  const registrations = await readProfileRegistrations()
+  const index = registrations.findIndex((item) => item.id === id)
+  if (index === -1) {
+    send(res, 404, 'registration not found', { 'content-type': 'text/plain; charset=utf-8' })
+    return
+  }
+  const now = new Date().toISOString()
+  const current = registrations[index]
+  registrations[index] = normalizeProfileRegistration({
+    ...current,
+    status: action === 'reject' ? 'rejected' : 'approved',
+    verificationCode: action === 'reject' ? current.verificationCode : current.verificationCode || createVerificationCode(),
+    reviewedAt: now,
+    updatedAt: now
+  })
+  await writeProfileRegistrations(registrations)
+  await logUsage(req, `profile-registration-${action}`, {
+    id,
+    callsign: registrations[index].callsign,
+    status: registrations[index].status
+  })
+  send(res, 303, '', { location: `${basePath}/admin/` })
 }
 
 async function listCheckins() {
@@ -884,11 +1082,12 @@ async function enrichCheckins(checkins, usage) {
 
 async function monitorPage(req, res) {
   if (!requireAdmin(req, res)) return
-  const [rawCheckins, usage, baseProfileStats, sharedProfilePayload] = await Promise.all([
+  const [rawCheckins, usage, baseProfileStats, sharedProfilePayload, registrations] = await Promise.all([
     listCheckins(),
     readUsage(0),
     readBaseProfileStats(),
-    readSharedProfiles()
+    readSharedProfiles(),
+    readProfileRegistrations()
   ])
   const checkins = await enrichCheckins(rawCheckins, usage)
   const totalRecords = checkins.reduce((sum, item) => sum + Number(item.recordCount || 0), 0)
@@ -898,6 +1097,7 @@ async function monitorPage(req, res) {
   const topCallsignStats = callsignStats.slice(0, 20)
   const usageStats = collectUsageStats(usage)
   const generatedExcelCount = checkins.filter((item) => item.fileExists).length
+  const pendingRegistrationCount = registrations.filter((item) => item.status === 'pending').length
   const rows = checkins
     .slice(0, 60)
     .map(
@@ -935,6 +1135,28 @@ async function monitorPage(req, res) {
       </tr>`
     )
     .join('')
+  const registrationRows = registrations
+    .slice(0, 80)
+    .map(
+      (item) => `<tr>
+        <td>${formatBjt(item.updatedAt || item.submittedAt)}</td>
+        <td><strong>${escapeHtml(item.callsign)}</strong></td>
+        <td>${escapeHtml(item.cracCertificate)}</td>
+        <td>${escapeHtml(item.qth || '')}</td>
+        <td>${escapeHtml(item.repeater || '')}</td>
+        <td>${escapeHtml(item.status)}</td>
+        <td>${
+          item.verificationCode
+            ? `<button type="button" class="code-copy" data-code="${escapeHtml(item.verificationCode)}">${escapeHtml(item.verificationCode)}</button>`
+            : '<code>-</code>'
+        }</td>
+        <td class="actions">
+          <form method="post" action="${basePath}/admin/registrations/${item.id}/approve"><button type="submit">通过/发码</button></form>
+          <form method="post" action="${basePath}/admin/registrations/${item.id}/reject"><button type="submit">拒绝</button></form>
+        </td>
+      </tr>`
+    )
+    .join('')
   send(
     res,
     200,
@@ -954,6 +1176,14 @@ async function monitorPage(req, res) {
       table{border-collapse:collapse;width:100%;font-size:13px}
       th,td{border-bottom:1px solid #d5ddd8;padding:7px 8px;text-align:left}
       th{background:#eef3f0}
+      code,.code-copy{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-weight:800;color:#008c2a}
+      .code-copy{background:#f3fbf5;border-color:#91d4a2;letter-spacing:.2px}
+      .copy-toast{position:fixed;right:20px;bottom:20px;background:#0d2b1c;color:#fff;border-radius:8px;padding:10px 14px;box-shadow:0 10px 28px rgba(0,0,0,.18);opacity:0;transform:translateY(8px);transition:.18s}
+      .copy-toast.show{opacity:1;transform:translateY(0)}
+      .actions{display:flex;gap:8px;white-space:nowrap}
+      form{margin:0}
+      button{background:#fff;border:1px solid #a8b6af;border-radius:6px;padding:5px 9px;font:inherit;font-weight:700;cursor:pointer}
+      button:hover{border-color:#008c2a;color:#008c2a}
       section{margin-top:14px;overflow:auto}
       a{color:#0b78d0}
       @media(max-width:900px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -968,14 +1198,31 @@ async function monitorPage(req, res) {
       <div class="card"><div>合并后呼号</div><div class="num">${callsignStats.length}</div><div class="hint">大小写已合并</div></div>
       <div class="card"><div>基础库 呼号 / QTH / 设备</div><div class="num" style="font-size:24px">${profileStats.base.callsigns} / ${profileStats.base.qths} / ${profileStats.base.devices}</div><div class="hint">基础条目 ${profileStats.base.entries}</div></div>
       <div class="card"><div>共享库 呼号 / QTH / 设备</div><div class="num" style="font-size:24px">${sharedProfileStats.callsigns} / ${sharedProfileStats.qths} / ${sharedProfileStats.devices}</div><div class="hint">共享条目 ${sharedProfileStats.entries}</div></div>
+      <div class="card"><div>待审核注册</div><div class="num">${pendingRegistrationCount}</div><div class="hint">通过后生成校验码</div></div>
       <div class="card"><div>本地库新增条目</div><div class="num">${profileStats.added.entries}</div><div class="hint">快照 ${profileStats.snapshotAt ? formatBjt(profileStats.snapshotAt) : '按记录推算'}</div></div>
       <div class="card"><div>新增 呼号 / QTH / 设备</div><div class="num" style="font-size:24px">${profileStats.added.callsigns} / ${profileStats.added.qths} / ${profileStats.added.devices}</div></div>
       <div class="card"><div>最近保存</div><div class="num" style="font-size:18px">${checkins[0]?.savedAt ? formatBjt(checkins[0].savedAt) : '暂无'}</div><div class="hint">UTC+8 北京时间</div></div>
     </div>
+    <section><h2>共享呼号资料库注册审核</h2><table><thead><tr><th>时间</th><th>呼号</th><th>CRAC 操作证书号</th><th>常用 QTH</th><th>常用服务器</th><th>状态</th><th>校验码</th><th>操作</th></tr></thead><tbody>${registrationRows}</tbody></table></section>
     <section><h2>Excel 保存日志</h2><table><thead><tr><th>时间 (UTC+8)</th><th>活动</th><th>主控</th><th>条数</th><th>有效文件</th><th>大小</th><th>下载</th></tr></thead><tbody>${rows}</tbody></table></section>
     <section><h2>合并呼号统计 TOP 20</h2><table><thead><tr><th>呼号</th><th>记录数</th><th>QTH 数</th><th>设备数</th><th>最近出现 (UTC+8)</th></tr></thead><tbody>${callsignRows}</tbody></table></section>
     <section><h2>访问/操作记录</h2><table><thead><tr><th>时间</th><th>事件</th><th>IP</th><th>路径</th></tr></thead><tbody>${usageRows}</tbody></table></section>
-    </main></body></html>`,
+    </main><div id="copyToast" class="copy-toast">校验码已复制</div><script>
+      document.addEventListener('click', async (event) => {
+        const button = event.target.closest('.code-copy')
+        if (!button) return
+        const code = button.dataset.code || button.textContent.trim()
+        try {
+          await navigator.clipboard.writeText(code)
+          const toast = document.getElementById('copyToast')
+          toast.classList.add('show')
+          window.clearTimeout(window.__copyToastTimer)
+          window.__copyToastTimer = window.setTimeout(() => toast.classList.remove('show'), 1400)
+        } catch {
+          window.prompt('复制校验码', code)
+        }
+      })
+    </script></body></html>`,
     { 'content-type': 'text/html; charset=utf-8' }
   )
 }
@@ -1226,6 +1473,7 @@ export async function startServer({ host = '127.0.0.1', port = defaultPort } = {
         return send(res, 204, '', profileCorsHeaders)
       }
       if (req.method === 'POST' && url.pathname === '/api/checkins') return saveCheckin(req, res)
+      if (req.method === 'POST' && url.pathname === '/api/profiles/register') return registerSharedProfileAccess(req, res)
       if (req.method === 'GET' && url.pathname === '/api/profiles/pull') return pullSharedProfiles(req, res)
       if (req.method === 'POST' && url.pathname === '/api/profiles/push') return pushSharedProfiles(req, res)
       if (req.method === 'GET' && url.pathname === '/api/brandmeister/last-heard') return fetchBrandmeisterLastHeard(req, res)
@@ -1234,6 +1482,10 @@ export async function startServer({ host = '127.0.0.1', port = defaultPort } = {
       if (req.method === 'GET' && url.pathname === '/admin/login') return renderAdminLogin(req, res)
       if (req.method === 'POST' && url.pathname === '/admin/login') return handleAdminLogin(req, res)
       if (url.pathname === '/admin/logout') return handleAdminLogout(req, res)
+      const registrationAction = url.pathname.match(/^\/admin\/registrations\/([^/]+)\/(approve|reject)$/)
+      if (req.method === 'POST' && registrationAction) {
+        return handleProfileRegistrationAction(req, res, registrationAction[1], registrationAction[2])
+      }
       if (url.pathname === '/admin') return send(res, 302, '', { location: `${basePath}/admin/` })
       if (url.pathname === '/admin/') return monitorPage(req, res)
       if (url.pathname.startsWith('/admin/checkins/')) return serveCheckinFile(req, res)

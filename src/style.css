@@ -218,7 +218,7 @@ h2 {
   align-items: stretch;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(560px, 0.95fr) minmax(720px, 1.35fr);
+  grid-template-columns: minmax(620px, 1.05fr) minmax(680px, 1.25fr);
   height: 100%;
   min-height: 0;
 }
@@ -226,7 +226,7 @@ h2 {
 .left-workbench {
   display: grid;
   gap: 8px;
-  grid-template-rows: auto minmax(245px, 1fr);
+  grid-template-rows: max-content minmax(0, 1fr);
   height: 100%;
   min-width: 0;
   overflow: hidden;
@@ -255,6 +255,9 @@ h2 {
   align-self: start;
   display: grid;
   gap: 6px;
+  min-height: max-content;
+  min-width: 0;
+  overflow: hidden;
   padding: 10px;
 }
 
@@ -271,7 +274,7 @@ h2 {
 .log-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  min-height: 245px;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -334,18 +337,18 @@ h2 {
 
 .combo-input {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 38px 70px;
+  grid-template-columns: minmax(0, 1fr) 70px;
+  position: relative;
 }
 
 .combo-input input {
   border-radius: 6px 0 0 6px;
   min-width: 0;
+  padding-right: 50px;
 }
 
 .combo-input .combo-clear-button {
-  border-radius: 0;
-  border-left: 0;
-  border-right: 0;
+  border-radius: 6px;
 }
 
 .combo-input select {
@@ -369,7 +372,7 @@ h2 {
   align-items: end;
   display: grid;
   gap: 8px;
-  grid-template-columns: 86px minmax(0, 1fr);
+  grid-template-columns: 86px minmax(260px, 1fr) minmax(250px, 320px);
 }
 
 .prefix-field input,
@@ -418,11 +421,17 @@ h2 {
 }
 
 .combo-clear-button {
-  border-color: var(--line-dark);
-  border-radius: 0;
-  height: auto;
+  border-color: #bdd2c8;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px rgba(249, 252, 250, 0.9);
+  height: 34px;
   min-height: 34px;
-  width: 38px;
+  position: absolute;
+  right: 76px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  z-index: 1;
 }
 
 .input-clear-button:hover,
@@ -573,12 +582,85 @@ h2 {
 }
 
 .entry-sync-row {
+  align-content: center;
+  align-items: center;
+  display: grid;
+  gap: 0 6px;
+  grid-template-columns: minmax(0, auto) 48px 48px;
+  grid-template-rows: 25px 17px;
+  justify-content: start;
+  min-height: 44px;
+  min-width: 0;
+  overflow: visible;
+  padding: 0;
+}
+
+.entry-sync-row .profile-sync-control {
+  grid-column: 1;
+  grid-row: 1;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.entry-sync-row .profile-sync-button {
+  grid-row: 1;
+  justify-self: end;
+  min-width: 48px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.entry-sync-row .profile-sync-button:nth-of-type(1) {
+  grid-column: 2;
+}
+
+.entry-sync-row .profile-sync-button:nth-of-type(2) {
+  grid-column: 3;
+}
+
+.entry-sync-row .profile-sync-status {
+  align-self: start;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: start;
+  max-width: 100%;
+}
+
+.profile-registration-modal {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(20, 34, 28, 0.22);
+  display: grid;
+  gap: 12px;
+  max-width: 620px;
+  padding: 14px;
+  width: min(620px, 100%);
+}
+
+.profile-registration-modal .modal-head {
   align-items: center;
   display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  min-height: 28px;
-  padding: 0 2px;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.profile-registration-modal .modal-head h2 {
+  margin: 0;
+}
+
+.profile-registration-actions {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 100px 100px minmax(0, 1fr);
+}
+
+.modal-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 0;
 }
 
 .fmo-config {
@@ -777,17 +859,18 @@ h2 {
 
 .toolbar {
   border-bottom: 1px solid var(--line);
-  gap: 12px;
+  gap: 8px;
   justify-content: space-between;
   padding: 10px 12px;
+  min-width: 0;
 }
 
 .search-box {
   align-items: center;
   display: flex;
-  flex: 1 1 320px;
+  flex: 1 1 180px;
   gap: 8px;
-  min-width: 220px;
+  min-width: 0;
   position: relative;
 }
 
@@ -801,9 +884,11 @@ h2 {
 }
 
 .toolbar-actions {
+  flex: 0 1 auto;
   flex-wrap: wrap;
   gap: 7px;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .tool-button,
@@ -1038,9 +1123,24 @@ tbody tr:nth-child(even) {
   opacity: 0.58;
 }
 
+.profile-register-button {
+  background: #ecf8ef;
+  border-color: #47b866;
+  color: var(--green-dark);
+  font-weight: 900;
+}
+
+.profile-register-button:hover {
+  background: #dff4e4;
+  border-color: var(--green);
+}
+
 .profile-sync-status {
   color: #6f7d77;
   font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
