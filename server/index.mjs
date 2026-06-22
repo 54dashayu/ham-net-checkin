@@ -145,7 +145,7 @@ async function createExcelBuffer(activity, records) {
     .join('  ')
 
   const workbook = new ExcelJS.Workbook()
-  workbook.creator = 'HAM 台网点名记录台'
+  workbook.creator = 'HAM台网点名主控台'
   workbook.created = new Date()
   const worksheet = workbook.addWorksheet('台网日志', {
     views: [{ showGridLines: true }]
@@ -184,7 +184,7 @@ async function createExcelBuffer(activity, records) {
       formatClock(record.time)
     ])
   })
-  worksheet.addRow(['本表格由“HAM 台网点名记录台”自动生成导出'])
+  worksheet.addRow(['本日志由 HAM台网点名主控台 自动生成，技术支持BHJSS'])
   worksheet.mergeCells(`A${worksheet.rowCount}:G${worksheet.rowCount}`)
 
   const thinBorder = { style: 'thin', color: { argb: 'FF000000' } }
