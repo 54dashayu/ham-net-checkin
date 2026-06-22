@@ -12,7 +12,12 @@ async function createWindow() {
   process.env.HAM_CHECKIN_SESSION_SECRET ||= 'desktop-local-session'
 
   const { startServer } = await import('../server/index.mjs')
-  localServer = await startServer({ port: 0 })
+  try {
+    localServer = await startServer({ port: 37173 })
+  } catch (error) {
+    if (error?.code !== 'EADDRINUSE') throw error
+    localServer = await startServer({ port: 0 })
+  }
   const address = localServer.address()
   const port = typeof address === 'object' && address ? address.port : 37173
 

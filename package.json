@@ -1,7 +1,7 @@
 {
   "name": "ham-net-checkin",
   "private": true,
-  "version": "0.1.12",
+  "version": "0.1.13",
   "productName": "HAM 台网点名主控台",
   "type": "module",
   "main": "electron/main.mjs",

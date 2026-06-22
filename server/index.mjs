@@ -59,7 +59,7 @@ const profileCorsHeaders = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET,POST,OPTIONS',
   'access-control-allow-headers':
-    'content-type,x-ham-callsign,x-ham-crac-certificate,x-ham-registration-qth,x-ham-registration-repeater,x-ham-profile-code'
+    'content-type,x-ham-callsign,x-ham-crac-certificate,x-ham-registration-qth,x-ham-registration-repeater,x-ham-profile-code,x-ham-profile-key'
 }
 
 const sendProfileJson = (res, status, payload) => {
@@ -145,6 +145,35 @@ function decodeRegistrationHeader(value) {
   } catch {
     return text
   }
+}
+
+function base64urlEncode(buffer) {
+  return Buffer.from(buffer).toString('base64url')
+}
+
+function base64urlDecode(value) {
+  return Buffer.from(String(value || ''), 'base64url')
+}
+
+function getProfileKeySecret() {
+  return crypto.createHash('sha256').update(`ham-profile-key|${sessionSecret}`).digest()
+}
+
+function encryptProfileKeyPayload(payload) {
+  const iv = crypto.randomBytes(12)
+  const cipher = crypto.createCipheriv('aes-256-gcm', getProfileKeySecret(), iv)
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return `v1.${base64urlEncode(iv)}.${base64urlEncode(encrypted)}.${base64urlEncode(tag)}`
+}
+
+function decryptProfileKeyToken(token) {
+  const parts = String(token || '').trim().split('.')
+  if (parts.length !== 4 || parts[0] !== 'v1') throw new Error('invalid profile key')
+  const decipher = crypto.createDecipheriv('aes-256-gcm', getProfileKeySecret(), base64urlDecode(parts[1]))
+  decipher.setAuthTag(base64urlDecode(parts[3]))
+  const decrypted = Buffer.concat([decipher.update(base64urlDecode(parts[2])), decipher.final()])
+  return JSON.parse(decrypted.toString('utf8'))
 }
 
 function getRegistrationId(callsign, cracCertificate) {
@@ -279,6 +308,26 @@ function normalizeProfileRegistration(registration) {
   }
 }
 
+function profileKeyPayload(registration) {
+  const item = normalizeProfileRegistration(registration)
+  const encryptedPayload = encryptProfileKeyPayload({
+    callsign: item.callsign,
+    cracCertificate: item.cracCertificate,
+    qth: item.qth,
+    repeater: item.repeater,
+    verificationCode: item.verificationCode,
+    issuedAt: item.reviewedAt || item.updatedAt || new Date().toISOString()
+  })
+  return {
+    app: 'HAM 台网点名主控台',
+    type: 'shared-profile-access-key',
+    version: 1,
+    callsign: item.callsign,
+    key: encryptedPayload,
+    issuedAt: item.reviewedAt || item.updatedAt || new Date().toISOString()
+  }
+}
+
 async function readProfileRegistrations() {
   try {
     const raw = await fs.readFile(profileRegistrationsFile(), 'utf8')
@@ -304,17 +353,37 @@ async function writeProfileRegistrations(registrations) {
 }
 
 async function requireProfileRegistration(req, res) {
-  const callsign = normalizeMonitorCallsign(req.headers['x-ham-callsign'] || req.appUrl?.searchParams.get('callsign'))
-  const cracCertificate = normalizeCracCertificate(
-    req.headers['x-ham-crac-certificate'] || req.appUrl?.searchParams.get('crac')
-  )
-  const verificationCode = normalizeProfileCode(req.headers['x-ham-profile-code'] || req.appUrl?.searchParams.get('code'))
-  const qth = normalizeRegistrationText(
-    decodeRegistrationHeader(req.headers['x-ham-registration-qth'] || req.appUrl?.searchParams.get('qth'))
-  )
-  const repeater = normalizeRegistrationText(
-    decodeRegistrationHeader(req.headers['x-ham-registration-repeater'] || req.appUrl?.searchParams.get('repeater'))
-  )
+  let callsign = ''
+  let cracCertificate = ''
+  let verificationCode = ''
+  let qth = ''
+  let repeater = ''
+  const profileKey = String(req.headers['x-ham-profile-key'] || req.appUrl?.searchParams.get('profileKey') || '').trim()
+  if (profileKey) {
+    try {
+      const payload = decryptProfileKeyToken(profileKey)
+      callsign = normalizeMonitorCallsign(payload.callsign)
+      cracCertificate = normalizeCracCertificate(payload.cracCertificate)
+      verificationCode = normalizeProfileCode(payload.verificationCode)
+      qth = normalizeRegistrationText(payload.qth)
+      repeater = normalizeRegistrationText(payload.repeater)
+    } catch {
+      sendProfileJson(res, 403, { ok: false, error: '验证密钥无效，请重新导入作者发放的密钥文件。' })
+      return null
+    }
+  } else {
+    callsign = normalizeMonitorCallsign(req.headers['x-ham-callsign'] || req.appUrl?.searchParams.get('callsign'))
+    cracCertificate = normalizeCracCertificate(
+      req.headers['x-ham-crac-certificate'] || req.appUrl?.searchParams.get('crac')
+    )
+    verificationCode = normalizeProfileCode(req.headers['x-ham-profile-code'] || req.appUrl?.searchParams.get('code'))
+    qth = normalizeRegistrationText(
+      decodeRegistrationHeader(req.headers['x-ham-registration-qth'] || req.appUrl?.searchParams.get('qth'))
+    )
+    repeater = normalizeRegistrationText(
+      decodeRegistrationHeader(req.headers['x-ham-registration-repeater'] || req.appUrl?.searchParams.get('repeater'))
+    )
+  }
   if (!callsign || !cracCertificate || !qth || !repeater || !verificationCode) {
     sendProfileJson(res, 403, { ok: false, error: '共享呼号资料库需注册审核后使用。' })
     return null
@@ -868,6 +937,30 @@ async function handleProfileRegistrationAction(req, res, id, action) {
   send(res, 303, '', { location: `${basePath}/admin/` })
 }
 
+async function downloadProfileRegistrationKey(req, res, id) {
+  if (!requireAdmin(req, res)) return
+  const registrations = await readProfileRegistrations()
+  const registration = registrations.find((item) => item.id === id)
+  if (!registration) {
+    send(res, 404, 'registration not found', { 'content-type': 'text/plain; charset=utf-8' })
+    return
+  }
+  if (registration.status !== 'approved' || !registration.verificationCode) {
+    send(res, 409, 'registration is not approved', { 'content-type': 'text/plain; charset=utf-8' })
+    return
+  }
+  const payload = profileKeyPayload(registration)
+  const body = JSON.stringify(payload, null, 2)
+  await logUsage(req, 'profile-registration-key-download', {
+    id,
+    callsign: registration.callsign
+  })
+  send(res, 200, body, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-disposition': `attachment; filename="${encodeURIComponent(`HAM呼号库验证密钥-${registration.callsign}.json`)}"`
+  })
+}
+
 async function listCheckins() {
   const base = path.join(dataDir, 'checkins')
   let names = []
@@ -1147,11 +1240,11 @@ async function monitorPage(req, res) {
         <td>${escapeHtml(item.status)}</td>
         <td>${
           item.verificationCode
-            ? `<button type="button" class="code-copy" data-code="${escapeHtml(item.verificationCode)}">${escapeHtml(item.verificationCode)}</button>`
+            ? `<a class="key-link" href="${basePath}/admin/registrations/${item.id}/key">下载密钥</a>`
             : '<code>-</code>'
         }</td>
         <td class="actions">
-          <form method="post" action="${basePath}/admin/registrations/${item.id}/approve"><button type="submit">通过/发码</button></form>
+          <form method="post" action="${basePath}/admin/registrations/${item.id}/approve"><button type="submit">通过/生成密钥</button></form>
           <form method="post" action="${basePath}/admin/registrations/${item.id}/reject"><button type="submit">拒绝</button></form>
         </td>
       </tr>`
@@ -1176,10 +1269,8 @@ async function monitorPage(req, res) {
       table{border-collapse:collapse;width:100%;font-size:13px}
       th,td{border-bottom:1px solid #d5ddd8;padding:7px 8px;text-align:left}
       th{background:#eef3f0}
-      code,.code-copy{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-weight:800;color:#008c2a}
-      .code-copy{background:#f3fbf5;border-color:#91d4a2;letter-spacing:.2px}
-      .copy-toast{position:fixed;right:20px;bottom:20px;background:#0d2b1c;color:#fff;border-radius:8px;padding:10px 14px;box-shadow:0 10px 28px rgba(0,0,0,.18);opacity:0;transform:translateY(8px);transition:.18s}
-      .copy-toast.show{opacity:1;transform:translateY(0)}
+      code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-weight:800;color:#008c2a}
+      .key-link{display:inline-block;border:1px solid #91d4a2;border-radius:6px;background:#f3fbf5;color:#008c2a;font-weight:800;padding:5px 9px;text-decoration:none;white-space:nowrap}
       .actions{display:flex;gap:8px;white-space:nowrap}
       form{margin:0}
       button{background:#fff;border:1px solid #a8b6af;border-radius:6px;padding:5px 9px;font:inherit;font-weight:700;cursor:pointer}
@@ -1198,31 +1289,16 @@ async function monitorPage(req, res) {
       <div class="card"><div>合并后呼号</div><div class="num">${callsignStats.length}</div><div class="hint">大小写已合并</div></div>
       <div class="card"><div>基础库 呼号 / QTH / 设备</div><div class="num" style="font-size:24px">${profileStats.base.callsigns} / ${profileStats.base.qths} / ${profileStats.base.devices}</div><div class="hint">基础条目 ${profileStats.base.entries}</div></div>
       <div class="card"><div>共享库 呼号 / QTH / 设备</div><div class="num" style="font-size:24px">${sharedProfileStats.callsigns} / ${sharedProfileStats.qths} / ${sharedProfileStats.devices}</div><div class="hint">共享条目 ${sharedProfileStats.entries}</div></div>
-      <div class="card"><div>待审核注册</div><div class="num">${pendingRegistrationCount}</div><div class="hint">通过后生成校验码</div></div>
+      <div class="card"><div>待审核注册</div><div class="num">${pendingRegistrationCount}</div><div class="hint">通过后生成验证密钥</div></div>
       <div class="card"><div>本地库新增条目</div><div class="num">${profileStats.added.entries}</div><div class="hint">快照 ${profileStats.snapshotAt ? formatBjt(profileStats.snapshotAt) : '按记录推算'}</div></div>
       <div class="card"><div>新增 呼号 / QTH / 设备</div><div class="num" style="font-size:24px">${profileStats.added.callsigns} / ${profileStats.added.qths} / ${profileStats.added.devices}</div></div>
       <div class="card"><div>最近保存</div><div class="num" style="font-size:18px">${checkins[0]?.savedAt ? formatBjt(checkins[0].savedAt) : '暂无'}</div><div class="hint">UTC+8 北京时间</div></div>
     </div>
-    <section><h2>共享呼号资料库注册审核</h2><table><thead><tr><th>时间</th><th>呼号</th><th>CRAC 操作证书号</th><th>常用 QTH</th><th>常用服务器</th><th>状态</th><th>校验码</th><th>操作</th></tr></thead><tbody>${registrationRows}</tbody></table></section>
+    <section><h2>共享呼号资料库注册审核</h2><table><thead><tr><th>时间</th><th>呼号</th><th>CRAC 操作证书号</th><th>常用 QTH</th><th>常用服务器</th><th>状态</th><th>验证密钥</th><th>操作</th></tr></thead><tbody>${registrationRows}</tbody></table></section>
     <section><h2>Excel 保存日志</h2><table><thead><tr><th>时间 (UTC+8)</th><th>活动</th><th>主控</th><th>条数</th><th>有效文件</th><th>大小</th><th>下载</th></tr></thead><tbody>${rows}</tbody></table></section>
     <section><h2>合并呼号统计 TOP 20</h2><table><thead><tr><th>呼号</th><th>记录数</th><th>QTH 数</th><th>设备数</th><th>最近出现 (UTC+8)</th></tr></thead><tbody>${callsignRows}</tbody></table></section>
     <section><h2>访问/操作记录</h2><table><thead><tr><th>时间</th><th>事件</th><th>IP</th><th>路径</th></tr></thead><tbody>${usageRows}</tbody></table></section>
-    </main><div id="copyToast" class="copy-toast">校验码已复制</div><script>
-      document.addEventListener('click', async (event) => {
-        const button = event.target.closest('.code-copy')
-        if (!button) return
-        const code = button.dataset.code || button.textContent.trim()
-        try {
-          await navigator.clipboard.writeText(code)
-          const toast = document.getElementById('copyToast')
-          toast.classList.add('show')
-          window.clearTimeout(window.__copyToastTimer)
-          window.__copyToastTimer = window.setTimeout(() => toast.classList.remove('show'), 1400)
-        } catch {
-          window.prompt('复制校验码', code)
-        }
-      })
-    </script></body></html>`,
+    </main></body></html>`,
     { 'content-type': 'text/html; charset=utf-8' }
   )
 }
@@ -1485,6 +1561,10 @@ export async function startServer({ host = '127.0.0.1', port = defaultPort } = {
       const registrationAction = url.pathname.match(/^\/admin\/registrations\/([^/]+)\/(approve|reject)$/)
       if (req.method === 'POST' && registrationAction) {
         return handleProfileRegistrationAction(req, res, registrationAction[1], registrationAction[2])
+      }
+      const registrationKeyDownload = url.pathname.match(/^\/admin\/registrations\/([^/]+)\/key$/)
+      if (req.method === 'GET' && registrationKeyDownload) {
+        return downloadProfileRegistrationKey(req, res, registrationKeyDownload[1])
       }
       if (url.pathname === '/admin') return send(res, 302, '', { location: `${basePath}/admin/` })
       if (url.pathname === '/admin/') return monitorPage(req, res)

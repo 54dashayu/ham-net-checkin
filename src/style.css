@@ -633,9 +633,9 @@ h2 {
   box-shadow: 0 18px 48px rgba(20, 34, 28, 0.22);
   display: grid;
   gap: 12px;
-  max-width: 620px;
+  max-width: 720px;
   padding: 14px;
-  width: min(620px, 100%);
+  width: min(720px, 100%);
 }
 
 .profile-registration-modal .modal-head {
@@ -653,7 +653,7 @@ h2 {
   align-items: center;
   display: grid;
   gap: 10px;
-  grid-template-columns: 100px 100px minmax(0, 1fr);
+  grid-template-columns: repeat(4, minmax(86px, 100px)) minmax(0, 1fr);
 }
 
 .modal-hint {
@@ -946,7 +946,7 @@ th,
 td {
   border-bottom: 1px solid var(--line);
   overflow: hidden;
-  padding: 4px 6px;
+  padding: 4px 5px;
   text-align: left;
   text-overflow: ellipsis;
   vertical-align: middle;
@@ -990,11 +990,11 @@ tbody tr:nth-child(even) {
 }
 
 .power-col {
-  width: 58px;
+  width: 50px;
 }
 
 .mode-col {
-  width: 62px;
+  width: 76px;
 }
 
 .log-table .qth-col {
@@ -1006,19 +1006,27 @@ tbody tr:nth-child(even) {
 }
 
 .fmo-list .qth-col {
-  width: 28%;
+  width: 24%;
 }
 
 .fmo-list .device-col {
-  width: 22%;
+  width: 18%;
 }
 
 .fmo-list .time-col {
-  width: 150px;
+  width: 128px;
 }
 
 .fmo-list .callsign-col {
-  width: 104px;
+  width: 96px;
+}
+
+.fmo-list .mode-col {
+  width: 92px;
+}
+
+.fmo-list .power-col {
+  width: 44px;
 }
 
 .editable-row {

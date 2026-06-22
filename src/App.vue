@@ -125,6 +125,7 @@ const profileSyncConfig = reactive({
   registrationQth: '',
   registrationRepeater: '',
   verificationCode: '',
+  profileKey: '',
   lastPulledAt: '',
   lastPushedAt: ''
 })
@@ -137,6 +138,7 @@ const authorQrTitle = ref('联系作者')
 const authorQrHint = ref('请使用微信扫码')
 const fileInput = ref(null)
 const dbFileInput = ref(null)
+const profileKeyFileInput = ref(null)
 const notice = ref('')
 const noticePosition = ref('bottom')
 const fmoCandidates = ref([])
@@ -612,12 +614,22 @@ const publicTimeRemainingText = computed(() => {
 })
 const hasProfileSyncRegistration = computed(
   () =>
-    Boolean(normalizeCallsign(profileSyncConfig.registrationCallsign)) &&
-    String(profileSyncConfig.cracCertificate || '').trim().length >= 4 &&
-    String(profileSyncConfig.registrationQth || '').trim().length >= 2 &&
-    String(profileSyncConfig.registrationRepeater || '').trim().length >= 2 &&
-    String(profileSyncConfig.verificationCode || '').trim().length >= 4
+    (Boolean(normalizeCallsign(profileSyncConfig.registrationCallsign)) &&
+      String(profileSyncConfig.profileKey || '').trim().length >= 32) ||
+    (Boolean(normalizeCallsign(profileSyncConfig.registrationCallsign)) &&
+      String(profileSyncConfig.cracCertificate || '').trim().length >= 4 &&
+      String(profileSyncConfig.registrationQth || '').trim().length >= 2 &&
+      String(profileSyncConfig.registrationRepeater || '').trim().length >= 2 &&
+      String(profileSyncConfig.verificationCode || '').trim().length >= 4)
 )
+const profileKeyPayload = () => ({
+  app: 'HAM 台网点名主控台',
+  type: 'shared-profile-access-key',
+  version: 1,
+  callsign: normalizeCallsign(profileSyncConfig.registrationCallsign),
+  key: String(profileSyncConfig.profileKey || '').trim(),
+  issuedAt: new Date().toISOString()
+})
 const publicWebExpired = computed(
   () => isPublicWebVersion.value && publicElapsedMs.value >= PUBLIC_WEB_LIMITS.durationMs
 )
@@ -791,12 +803,17 @@ const loadProfileSyncConfig = () => {
   try {
     const saved = JSON.parse(localStorage.getItem(PROFILE_SYNC_CONFIG_KEY) || '{}')
     Object.assign(profileSyncConfig, {
-      enabled: Boolean(saved.enabled && saved.registrationCallsign && saved.cracCertificate && saved.verificationCode),
+      enabled: Boolean(
+        saved.enabled &&
+          saved.registrationCallsign &&
+          (saved.profileKey || (saved.cracCertificate && saved.verificationCode))
+      ),
       registrationCallsign: normalizeCallsign(saved.registrationCallsign || ''),
       cracCertificate: String(saved.cracCertificate || '').trim(),
       registrationQth: String(saved.registrationQth || '').trim(),
       registrationRepeater: String(saved.registrationRepeater || '').trim(),
       verificationCode: String(saved.verificationCode || '').trim(),
+      profileKey: String(saved.profileKey || '').trim(),
       lastPulledAt: saved.lastPulledAt || '',
       lastPushedAt: saved.lastPushedAt || ''
     })
@@ -808,6 +825,7 @@ const loadProfileSyncConfig = () => {
       registrationQth: '',
       registrationRepeater: '',
       verificationCode: '',
+      profileKey: '',
       lastPulledAt: '',
       lastPushedAt: ''
     })
@@ -1015,13 +1033,84 @@ const getDirtyProfilesForSync = () => {
 
 const encodeProfileHeader = (value) => encodeURIComponent(String(value || '').trim())
 
-const sharedProfileAuthHeaders = () => ({
-  'x-ham-callsign': normalizeCallsign(profileSyncConfig.registrationCallsign),
-  'x-ham-crac-certificate': String(profileSyncConfig.cracCertificate || '').trim(),
-  'x-ham-registration-qth': encodeProfileHeader(profileSyncConfig.registrationQth),
-  'x-ham-registration-repeater': encodeProfileHeader(profileSyncConfig.registrationRepeater),
-  'x-ham-profile-code': String(profileSyncConfig.verificationCode || '').trim()
-})
+const sharedProfileAuthHeaders = () => {
+  const profileKey = String(profileSyncConfig.profileKey || '').trim()
+  if (profileKey) return { 'x-ham-profile-key': profileKey }
+  return {
+    'x-ham-callsign': normalizeCallsign(profileSyncConfig.registrationCallsign),
+    'x-ham-crac-certificate': String(profileSyncConfig.cracCertificate || '').trim(),
+    'x-ham-registration-qth': encodeProfileHeader(profileSyncConfig.registrationQth),
+    'x-ham-registration-repeater': encodeProfileHeader(profileSyncConfig.registrationRepeater),
+    'x-ham-profile-code': String(profileSyncConfig.verificationCode || '').trim()
+  }
+}
+
+const applyProfileKeyPayload = (payload) => {
+  const callsign = normalizeCallsign(payload?.callsign || payload?.registrationCallsign || '')
+  const profileKey = String(payload?.key || payload?.profileKey || '').trim()
+  const cracCertificate = String(payload?.cracCertificate || payload?.certificate || '').trim()
+  const qth = String(payload?.qth || payload?.registrationQth || '').trim()
+  const repeater = String(payload?.repeater || payload?.registrationRepeater || '').trim()
+  const verificationCode = String(payload?.verificationCode || payload?.code || '').trim()
+  if (profileKey) {
+    if (!callsign) throw new Error('密钥文件内容不完整')
+    Object.assign(profileSyncConfig, {
+      enabled: true,
+      registrationCallsign: callsign,
+      cracCertificate,
+      registrationQth: qth,
+      registrationRepeater: repeater,
+      verificationCode: '',
+      profileKey
+    })
+    persistProfileSyncConfig()
+    return
+  }
+  if (!callsign || cracCertificate.length < 4 || qth.length < 2 || repeater.length < 2 || verificationCode.length < 4) {
+    throw new Error('密钥文件内容不完整')
+  }
+  Object.assign(profileSyncConfig, {
+    enabled: true,
+    registrationCallsign: callsign,
+    cracCertificate,
+    registrationQth: qth,
+    registrationRepeater: repeater,
+    verificationCode,
+    profileKey: ''
+  })
+  persistProfileSyncConfig()
+}
+
+const exportProfileKey = () => {
+  if (!String(profileSyncConfig.profileKey || '').trim()) {
+    showNotice('请先导入作者发放的验证密钥')
+    return
+  }
+  const payload = profileKeyPayload()
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json;charset=utf-8'
+  })
+  downloadBlob(blob, `HAM呼号库验证密钥-${payload.callsign || 'CALLSIGN'}.json`)
+  showNotice('验证密钥已导出，请妥善保存')
+}
+
+const importProfileKey = async (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  try {
+    const payload = JSON.parse(await file.text())
+    applyProfileKeyPayload(payload)
+    profileRegistrationOpen.value = false
+    profileSyncStatus.value = '验证密钥已导入，正在同步'
+    showNotice('验证密钥已导入')
+    await syncSharedProfiles({ silent: false })
+  } catch (error) {
+    profileSyncStatus.value = '验证密钥导入失败'
+    showNotice(error?.message || '验证密钥导入失败')
+  } finally {
+    event.target.value = ''
+  }
+}
 
 const requestProfileRegistration = async () => {
   const callsign = normalizeCallsign(profileSyncConfig.registrationCallsign || activityConfig.controlCallsign)
@@ -2999,6 +3088,13 @@ onUnmounted(() => {
               </button>
               <input ref="fileInput" class="hidden-input" type="file" accept="application/json" @change="importJson" />
               <input ref="dbFileInput" class="hidden-input" type="file" accept=".db3,.sqlite,.sqlite3" @change="importDb3" />
+              <input
+                ref="profileKeyFileInput"
+                class="hidden-input"
+                type="file"
+                accept="application/json,.json"
+                @change="importProfileKey"
+              />
             </div>
           </div>
 
@@ -3048,7 +3144,7 @@ onUnmounted(() => {
                   <td>{{ record.qth || '-' }}</td>
                   <td>{{ record.device || '-' }}</td>
                   <td>{{ record.power || '-' }}</td>
-                  <td>{{ record.mode || '-' }}</td>
+                  <td :title="record.mode || '-'">{{ record.mode || '-' }}</td>
                 </tr>
                 <tr v-if="!filteredRecords.length">
                   <td colspan="8" class="empty-state">暂无记录</td>
@@ -3218,7 +3314,7 @@ onUnmounted(() => {
                   <td>{{ candidate.qth || candidate.grid || '-' }}</td>
                   <td>{{ candidate.device || '-' }}</td>
                   <td>{{ candidate.power || '-' }}</td>
-                  <td>{{ candidate.mode || '-' }}</td>
+                  <td :title="candidate.mode || '-'">{{ candidate.mode || '-' }}</td>
                 </tr>
                 <tr v-if="!recentFmoCandidates.length">
                   <td colspan="6" class="empty-state">暂无最近通联</td>
@@ -3289,10 +3385,6 @@ onUnmounted(() => {
             />
           </label>
         </div>
-        <label class="field">
-          <span>作者审核通过后填写校验码</span>
-          <input v-model="profileSyncConfig.verificationCode" autocomplete="off" placeholder="校验码" />
-        </label>
         <div class="profile-registration-actions">
           <button type="button" class="tool-button" :disabled="profileSyncBusy" @click="requestProfileRegistration">
             提交审核
@@ -3300,11 +3392,17 @@ onUnmounted(() => {
           <button type="button" class="tool-button" @click="authorQrOpen = true">
             微信联系
           </button>
+          <button type="button" class="tool-button" @click="profileKeyFileInput?.click()">
+            导入验证密钥
+          </button>
+          <button type="button" class="tool-button" :disabled="!profileSyncConfig.profileKey" @click="exportProfileKey">
+            导出验证密钥
+          </button>
           <button type="button" class="primary-action" :disabled="!hasProfileSyncRegistration" @click="profileSyncConfig.enabled = true; profileRegistrationOpen = false; syncSharedProfiles({ silent: false })">
             开启同步
           </button>
         </div>
-        <p class="modal-hint">提交后需等待作者在后台审核，通过后获得校验码，才可开启共享呼号资料库同步。</p>
+        <p class="modal-hint">提交后需等待作者在后台审核，通过后获得验证密钥文件。导入验证密钥后，即可开启共享呼号资料库同步。</p>
       </div>
     </div>
 
