@@ -41,8 +41,9 @@ const CONTROL_TX_STALE_MS = {
   mmdvm: 1500,
   default: 1200
 }
-const activityId = new URLSearchParams(window.location.search).get('activity') || ''
-const scopedKey = (key) => (activityId ? `${key}:${activityId}` : key)
+const initialActivityId = new URLSearchParams(window.location.search).get('activity') || ''
+const currentActivityId = ref(initialActivityId)
+const scopedKey = (key) => (currentActivityId.value ? `${key}:${currentActivityId.value}` : key)
 const serverBasePath = window.location.pathname.startsWith('/checkin') ? '/checkin' : ''
 const serverApiPath = (path) => `${serverBasePath}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
@@ -1916,7 +1917,7 @@ const saveCheckinToServer = async ({ silent = false } = {}) => {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      activityId: activityId || 'default',
+      activityId: currentActivityId.value || 'default',
       activityConfig,
       records: records.value,
       client: {
@@ -2005,9 +2006,34 @@ const toggleAutoSave = async () => {
 }
 
 const createNewActivity = () => {
+  if (
+    records.value.length &&
+    !window.confirm('当前点名记录会保留在本地历史中。是否新建一个空白点名日志？')
+  ) {
+    return
+  }
+
+  const nextActivityId = crypto.randomUUID()
+  currentActivityId.value = nextActivityId
   const nextUrl = new URL(window.location.href)
-  nextUrl.searchParams.set('activity', crypto.randomUUID())
-  window.open(nextUrl.toString(), '_blank', 'noopener')
+  nextUrl.searchParams.set('activity', nextActivityId)
+  window.history.replaceState(null, '', nextUrl.toString())
+
+  records.value = []
+  selectedRecordIds.value = []
+  searchText.value = ''
+  excelFileHandle.value = null
+  serverSaveAvailable.value = false
+  autoSaveEnabled.value = false
+  window.clearTimeout(autoSaveTimer.value)
+  resetForm()
+  Object.assign(activityConfig, {
+    ...activityConfig,
+    name: getDefaultActivityName()
+  })
+  persist()
+  persistActivityConfig()
+  showNotice('已新建空白点名日志')
 }
 
 const exportJson = () => {
