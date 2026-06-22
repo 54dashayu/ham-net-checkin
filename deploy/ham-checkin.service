@@ -1,0 +1,20 @@
+[Unit]
+Description=HAM Net Check-in Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ham-checkin
+Environment=NODE_ENV=production
+Environment=PORT=37173
+Environment=HAM_CHECKIN_DATA_DIR=/var/lib/ham-checkin
+Environment=HAM_CHECKIN_BASE_PATH=/checkin
+EnvironmentFile=-/etc/ham-checkin.env
+ExecStart=/usr/local/bin/node /opt/ham-checkin/server/index.mjs
+Restart=always
+RestartSec=3
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
