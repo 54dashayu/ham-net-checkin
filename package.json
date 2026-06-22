@@ -1,7 +1,7 @@
 {
   "name": "ham-net-checkin",
   "private": true,
-  "version": "0.1.7",
+  "version": "0.1.9",
   "productName": "HAM 台网点名主控台",
   "type": "module",
   "main": "electron/main.mjs",
@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "desktop": "npm run build && electron .",
-    "dist:win": "npm run build && electron-builder --win nsis portable --x64",
+    "dist:win": "npm run build && electron-builder --win portable dir --x64",
     "preview": "vite preview",
     "serve": "node server/index.mjs"
   },
@@ -33,25 +33,18 @@
       "icon": "build/icon.ico",
       "target": [
         {
-          "target": "nsis",
+          "target": "portable",
           "arch": [
             "x64"
           ]
         },
         {
-          "target": "portable",
+          "target": "dir",
           "arch": [
             "x64"
           ]
         }
       ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "HAM 台网点名主控台"
     }
   },
   "dependencies": {

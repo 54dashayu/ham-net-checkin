@@ -41,6 +41,13 @@ const CONTROL_TX_STALE_MS = {
   mmdvm: 1500,
   default: 1200
 }
+const PUBLIC_WEB_LIMITS = {
+  durationMs: 75 * 60 * 1000,
+  resetWindowMs: 24 * 60 * 60 * 1000,
+  maxRecords: 60,
+  maxDownloads: 1
+}
+const PUBLIC_WEB_SESSION_KEY = 'ham-net-checkin-public-session-v1'
 const initialActivityId = new URLSearchParams(window.location.search).get('activity') || ''
 const currentActivityId = ref(initialActivityId)
 const scopedKey = (key) => (currentActivityId.value ? `${key}:${currentActivityId.value}` : key)
@@ -90,6 +97,12 @@ const excelSaving = ref(false)
 const autoSaveTimer = ref(null)
 const serverSaveAvailable = ref(false)
 const authorQrOpen = ref(false)
+const publicSession = reactive({
+  startedAt: Date.now(),
+  activityId: initialActivityId || 'default',
+  downloads: 0
+})
+const publicSessionTimer = ref(null)
 const fileInput = ref(null)
 const dbFileInput = ref(null)
 const notice = ref('')
@@ -555,7 +568,23 @@ const isLocalWebOrigin = () => {
   )
 }
 
-const isPublicWebVersion = computed(() => !isLocalWebOrigin())
+const isPublicWebVersion = computed(
+  () => window.location.protocol !== 'file:' && !isLocalWebOrigin() && serverBasePath === '/checkin'
+)
+const publicElapsedMs = ref(0)
+const publicTimeRemainingText = computed(() => {
+  const remaining = Math.max(0, PUBLIC_WEB_LIMITS.durationMs - publicElapsedMs.value)
+  const minutes = Math.floor(remaining / 60000)
+  const seconds = Math.floor((remaining % 60000) / 1000)
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+})
+const publicWebExpired = computed(
+  () => isPublicWebVersion.value && publicElapsedMs.value >= PUBLIC_WEB_LIMITS.durationMs
+)
+const publicWebLimitText = computed(
+  () =>
+    `*网络版仅提供 BM DMR 模式测试；同一 IP 每 24 小时可测试 1 次：时长 1 小时 15 分钟、1 个日志文件、最多 60 条记录、Excel 下载 1 次。剩余 ${publicTimeRemainingText.value}`
+)
 
 const isPrivateLanAddress = (address) => {
   const host = normalizeHost(address).replace(/:\d+$/g, '').toLowerCase()
@@ -593,6 +622,71 @@ const showNotice = (message, position = 'bottom') => {
     notice.value = ''
     noticePosition.value = 'bottom'
   }, 2600)
+}
+
+const loadPublicSession = () => {
+  if (!isPublicWebVersion.value) return
+  try {
+    const saved = JSON.parse(localStorage.getItem(PUBLIC_WEB_SESSION_KEY) || '{}')
+    if (saved && Number(saved.startedAt) && Date.now() - Number(saved.startedAt) < PUBLIC_WEB_LIMITS.resetWindowMs) {
+      publicSession.startedAt = Number(saved.startedAt)
+      publicSession.activityId = saved.activityId || currentActivityId.value || 'default'
+      publicSession.downloads = Number(saved.downloads || 0)
+    } else {
+      publicSession.startedAt = Date.now()
+      publicSession.activityId = currentActivityId.value || 'default'
+      publicSession.downloads = 0
+    }
+  } catch {
+    publicSession.startedAt = Date.now()
+    publicSession.activityId = currentActivityId.value || 'default'
+    publicSession.downloads = 0
+  }
+  publicElapsedMs.value = Date.now() - publicSession.startedAt
+  persistPublicSession()
+}
+
+const persistPublicSession = () => {
+  if (!isPublicWebVersion.value) return
+  localStorage.setItem(
+    PUBLIC_WEB_SESSION_KEY,
+    JSON.stringify({
+      startedAt: publicSession.startedAt,
+      activityId: publicSession.activityId,
+      downloads: publicSession.downloads
+    })
+  )
+}
+
+const assertPublicWebAllowed = (action) => {
+  if (!isPublicWebVersion.value) return true
+  publicElapsedMs.value = Date.now() - publicSession.startedAt
+  if (publicWebExpired.value) {
+    showNotice('网络版测试已超过 1 小时 15 分钟，本地版请联系作者微信。', 'top')
+    authorQrOpen.value = true
+    return false
+  }
+  if (action === 'add-record' && records.value.length >= PUBLIC_WEB_LIMITS.maxRecords) {
+    showNotice('网络版测试最多记录 60 个友台，本地版请联系作者微信。', 'top')
+    authorQrOpen.value = true
+    return false
+  }
+  if (action === 'save' && records.value.length > PUBLIC_WEB_LIMITS.maxRecords) {
+    showNotice('网络版测试最多保存 60 条记录，本地版请联系作者微信。', 'top')
+    authorQrOpen.value = true
+    return false
+  }
+  if (action === 'new-activity' && publicSession.activityId) {
+    showNotice('网络版测试仅允许 1 个日志文件，本地版请联系作者微信。', 'top')
+    authorQrOpen.value = true
+    return false
+  }
+  if (action === 'download' && publicSession.downloads >= PUBLIC_WEB_LIMITS.maxDownloads) {
+    showNotice('网络版测试仅允许下载 1 次 Excel，本地版请联系作者微信。', 'top')
+    authorQrOpen.value = true
+    return false
+  }
+  return true
 }
 
 const resetForm = () => {
@@ -797,6 +891,32 @@ const mergeProfiles = (nextProfiles, options = {}) => {
     if (callsign) profileMap.set(callsign, mergeProfileEntry(profileMap.get(callsign), profile, options))
   })
   profiles.value = [...profileMap.values()]
+}
+
+const getProfileStatsSnapshot = () => {
+  const normalizedProfiles = profiles.value.map(normalizeProfile).filter((profile) => profile.callsign)
+  const callsigns = new Set()
+  const qths = new Set()
+  const devices = new Set()
+  let historyEntries = 0
+
+  normalizedProfiles.forEach((profile) => {
+    callsigns.add(profile.callsign)
+    profileFields.forEach((key) => {
+      const values = uniqueRecentValues([profile[key], ...(profile.history?.[key] || [])], 100)
+      historyEntries += values.length
+      if (key === 'qth') values.forEach((value) => qths.add(value))
+      if (key === 'device') values.forEach((value) => devices.add(value))
+    })
+  })
+
+  return {
+    entries: historyEntries,
+    callsigns: callsigns.size,
+    qths: qths.size,
+    devices: devices.size,
+    capturedAt: new Date().toISOString()
+  }
 }
 
 const stopControlTxSpeaking = (time = nowForInput()) => {
@@ -1627,6 +1747,7 @@ const changeMonitorSource = (event) => {
 }
 
 const submitRecord = () => {
+  if (!editingId.value && !assertPublicWebAllowed('add-record')) return
   const callsign = buildRecordCallsign()
   if (!callsign) {
     showNotice('请先填写呼号')
@@ -1902,7 +2023,12 @@ const createExcelBlob = async () => {
 }
 
 const exportExcel = async () => {
+  if (!assertPublicWebAllowed('download')) return
   downloadBlob(await createExcelBlob(), getExcelFilename())
+  if (isPublicWebVersion.value) {
+    publicSession.downloads += 1
+    persistPublicSession()
+  }
   showNotice('Excel 已导出')
 }
 
@@ -1913,6 +2039,7 @@ const writeBlobToHandle = async (handle, blob) => {
 }
 
 const saveCheckinToServer = async ({ silent = false } = {}) => {
+  if (!assertPublicWebAllowed('save')) throw new Error('网络版测试限制')
   const response = await fetch(serverApiPath('/api/checkins'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -1920,6 +2047,7 @@ const saveCheckinToServer = async ({ silent = false } = {}) => {
       activityId: currentActivityId.value || 'default',
       activityConfig,
       records: records.value,
+      profileStats: getProfileStatsSnapshot(),
       client: {
         url: window.location.href,
         userAgent: navigator.userAgent,
@@ -1927,9 +2055,13 @@ const saveCheckinToServer = async ({ silent = false } = {}) => {
       }
     })
   })
-  if (!response.ok) throw new Error(`服务器保存失败：HTTP ${response.status}`)
   const data = await response.json()
+  if (!response.ok) throw new Error(data?.error || `服务器保存失败：HTTP ${response.status}`)
   if (!data?.ok) throw new Error(data?.error || '服务器保存失败')
+  if (isPublicWebVersion.value) {
+    publicSession.activityId = currentActivityId.value || 'default'
+    persistPublicSession()
+  }
   serverSaveAvailable.value = true
   autoSaveEnabled.value = true
   if (!silent) showNotice(`服务器已保存 ${data.recordCount ?? records.value.length} 条记录`)
@@ -1945,6 +2077,7 @@ const saveExcelFile = async ({ silent = false, allowPicker = true } = {}) => {
       await saveCheckinToServer({ silent })
       return
     } catch (serverError) {
+      if (isPublicWebVersion.value) throw serverError
       if (serverSaveAvailable.value || silent || !allowPicker) throw serverError
     }
 
@@ -1975,7 +2108,7 @@ const saveExcelFile = async ({ silent = false, allowPicker = true } = {}) => {
   } catch (error) {
     if (error?.name !== 'AbortError') {
       console.error(error)
-      showNotice('保存失败，请重试')
+      showNotice(error?.message || '保存失败，请重试')
     }
     throw error
   } finally {
@@ -2006,6 +2139,7 @@ const toggleAutoSave = async () => {
 }
 
 const createNewActivity = () => {
+  if (!assertPublicWebAllowed('new-activity')) return
   if (
     records.value.length &&
     !window.confirm('当前点名记录会保留在本地历史中。是否新建一个空白点名日志？')
@@ -2204,16 +2338,21 @@ watch(
 )
 
 onMounted(() => {
+  loadPublicSession()
   loadRecords()
   loadProfiles()
   loadBaseProfiles()
   loadFmoConfig()
   loadActivityConfig()
+  publicSessionTimer.value = window.setInterval(() => {
+    if (isPublicWebVersion.value) publicElapsedMs.value = Date.now() - publicSession.startedAt
+  }, 1000)
   startFmoAutoRefresh()
 })
 
 onUnmounted(() => {
   window.clearInterval(fmoRefreshTimer.value)
+  window.clearInterval(publicSessionTimer.value)
   window.clearTimeout(monitorRestartTimer.value)
   window.clearTimeout(controlTxClearTimer.value)
   window.clearTimeout(autoSaveTimer.value)
@@ -2222,7 +2361,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="app-shell">
+  <main class="app-shell" :class="{ 'has-public-bar': isPublicWebVersion }">
+    <div v-if="isPublicWebVersion" class="public-limit-bar">
+      <span>{{ publicWebLimitText }}</span>
+      <button type="button" @click="authorQrOpen = true">本地版请联系作者</button>
+    </div>
     <section class="activity-band">
       <div class="brand-block">
         <div class="brand-mark" aria-hidden="true">
@@ -2784,10 +2927,6 @@ onUnmounted(() => {
             {{ controlTxInfo.mode }}
           </em>
           <em v-else>等待监听到主控呼号</em>
-          <span v-if="isPublicWebVersion" class="web-mode-note">
-            *网络版仅提供 BM DMR 模式测试
-            <button type="button" @click="authorQrOpen = true">本地版请联系作者</button>
-          </span>
         </div>
       </section>
     </section>

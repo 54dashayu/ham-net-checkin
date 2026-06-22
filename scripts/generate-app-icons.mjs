@@ -87,51 +87,143 @@ function fillRoundedRect(data, size, x, y, w, h, r, rgba) {
   }
 }
 
-function strokeCircle(data, size, cx, cy, radius, thickness, rgba, mask = () => true) {
+function insidePolygon(x, y, points) {
+  let inside = false
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+    const xi = points[i][0]
+    const yi = points[i][1]
+    const xj = points[j][0]
+    const yj = points[j][1]
+    const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
+function distanceToSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax
+  const dy = by - ay
+  const lengthSquared = dx * dx + dy * dy || 1
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared))
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+}
+
+function fillPolygon(data, size, points, rgba) {
+  const xs = points.map((point) => point[0])
+  const ys = points.map((point) => point[1])
+  for (let py = Math.floor(Math.min(...ys) - 2); py <= Math.ceil(Math.max(...ys) + 2); py += 1) {
+    for (let px = Math.floor(Math.min(...xs) - 2); px <= Math.ceil(Math.max(...xs) + 2); px += 1) {
+      const sampleX = px + 0.5
+      const sampleY = py + 0.5
+      let edgeDistance = Infinity
+      for (let index = 0; index < points.length; index += 1) {
+        const next = (index + 1) % points.length
+        edgeDistance = Math.min(
+          edgeDistance,
+          distanceToSegment(
+            sampleX,
+            sampleY,
+            points[index][0],
+            points[index][1],
+            points[next][0],
+            points[next][1]
+          )
+        )
+      }
+      const inside = insidePolygon(sampleX, sampleY, points)
+      const amount = inside ? 1 : Math.max(0, 0.5 - edgeDistance)
+      blendPixel(data, size, px, py, rgba, amount)
+    }
+  }
+}
+
+function strokeArc(data, size, cx, cy, radius, start, end, thickness, rgba) {
   for (let py = Math.floor(cy - radius - thickness); py <= Math.ceil(cy + radius + thickness); py += 1) {
     for (let px = Math.floor(cx - radius - thickness); px <= Math.ceil(cx + radius + thickness); px += 1) {
-      if (!mask(px + 0.5, py + 0.5)) continue
+      const angle = Math.atan2(py + 0.5 - cy, px + 0.5 - cx)
+      if (angle < start || angle > end) continue
       const distance = Math.abs(Math.hypot(px + 0.5 - cx, py + 0.5 - cy) - radius) - thickness / 2
       blendPixel(data, size, px, py, rgba, Math.max(0, Math.min(1, 0.5 - distance)))
     }
   }
 }
 
-function fillCircle(data, size, cx, cy, radius, rgba) {
-  for (let py = Math.floor(cy - radius - 1); py <= Math.ceil(cy + radius + 1); py += 1) {
-    for (let px = Math.floor(cx - radius - 1); px <= Math.ceil(cx + radius + 1); px += 1) {
-      const distance = Math.hypot(px + 0.5 - cx, py + 0.5 - cy) - radius
-      blendPixel(data, size, px, py, rgba, Math.max(0, Math.min(1, 0.5 - distance)))
-    }
-  }
+function scalePoints(points, scale) {
+  return points.map(([x, y]) => [x * scale, y * scale])
 }
 
 function generateIcon(size) {
   const data = new Uint8ClampedArray(size * size * 4)
-  const scale = size / 256
-  const background = color('#e8fff1')
-  const border = color('#91d7a8')
+  const scale = size / 512
+  const background = color('#eafff1')
+  const border = color('#8bd8a6')
   const dark = color('#07883a')
-  const mid = color('#19a653')
-  const light = color('#ffffff')
+  const mid = color('#2fae62', 175)
+  const bolt = color('#7f36ff')
+  const highlight = color('#42c6ff', 120)
+  const white = color('#ffffff', 120)
+  const shadow = color('#123820', 70)
 
-  fillRoundedRect(data, size, 10 * scale, 10 * scale, 236 * scale, 236 * scale, 40 * scale, background)
-  fillRoundedRect(data, size, 10 * scale, 10 * scale, 236 * scale, 236 * scale, 40 * scale, border)
-  fillRoundedRect(data, size, 17 * scale, 17 * scale, 222 * scale, 222 * scale, 34 * scale, background)
+  fillRoundedRect(data, size, 24 * scale, 24 * scale, 464 * scale, 464 * scale, 92 * scale, border)
+  fillRoundedRect(data, size, 40 * scale, 40 * scale, 432 * scale, 432 * scale, 78 * scale, background)
 
-  fillRoundedRect(data, size, 112 * scale, 86 * scale, 32 * scale, 92 * scale, 16 * scale, dark)
-  fillCircle(data, size, 128 * scale, 76 * scale, 18 * scale, dark)
-  fillCircle(data, size, 128 * scale, 76 * scale, 7 * scale, light)
-
-  const rightMask = (x) => x >= 128 * scale
-  const leftMask = (x) => x <= 128 * scale
-  ;[44, 70].forEach((radius, index) => {
-    strokeCircle(data, size, 128 * scale, 86 * scale, radius * scale, 10 * scale, index ? mid : dark, rightMask)
-    strokeCircle(data, size, 128 * scale, 86 * scale, radius * scale, 10 * scale, index ? mid : dark, leftMask)
+  ;[72, 118, 164].forEach((radius, index) => {
+    const thickness = (index === 0 ? 18 : 14) * scale
+    const arcColor = index === 2 ? color('#07883a', 110) : mid
+    strokeArc(data, size, 258 * scale, 262 * scale, radius * scale, -2.55, -0.62, thickness, arcColor)
+    strokeArc(data, size, 258 * scale, 262 * scale, radius * scale, 0.62, 2.55, thickness, arcColor)
   })
 
-  fillRoundedRect(data, size, 76 * scale, 176 * scale, 104 * scale, 22 * scale, 11 * scale, dark)
-  fillRoundedRect(data, size, 92 * scale, 202 * scale, 72 * scale, 18 * scale, 9 * scale, mid)
+  const boltPoints = scalePoints(
+    [
+      [282, 52],
+      [128, 52],
+      [70, 204],
+      [194, 204],
+      [150, 458],
+      [386, 178],
+      [270, 178],
+      [342, 52]
+    ],
+    scale
+  )
+  const shadowPoints = boltPoints.map(([x, y]) => [x + 10 * scale, y + 12 * scale])
+  fillPolygon(data, size, shadowPoints, shadow)
+  fillPolygon(data, size, boltPoints, bolt)
+
+  fillPolygon(
+    data,
+    size,
+    scalePoints(
+      [
+        [292, 68],
+        [246, 180],
+        [342, 180],
+        [216, 332],
+        [248, 214],
+        [132, 214],
+        [186, 68]
+      ],
+      scale
+    ),
+    highlight
+  )
+  fillPolygon(
+    data,
+    size,
+    scalePoints(
+      [
+        [166, 76],
+        [120, 184],
+        [156, 184],
+        [202, 76]
+      ],
+      scale
+    ),
+    white
+  )
+
+  strokeArc(data, size, 258 * scale, 262 * scale, 196 * scale, -2.5, 2.5, 10 * scale, color('#07883a', 55))
   return writePng(size, size, data)
 }
 

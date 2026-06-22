@@ -16,6 +16,13 @@ const sessionSecret =
   process.env.HAM_CHECKIN_SESSION_SECRET || adminPassword || crypto.randomBytes(32).toString('hex')
 const basePath = String(process.env.HAM_CHECKIN_BASE_PATH || '').replace(/\/+$/g, '')
 const sessionCookieName = 'ham_checkin_admin'
+const isNetworkEdition = Boolean(basePath)
+const networkLimits = {
+  durationMs: 75 * 60 * 1000,
+  resetWindowMs: 24 * 60 * 60 * 1000,
+  maxRecords: 60,
+  maxActivities: 1
+}
 
 const jsonHeaders = { 'content-type': 'application/json; charset=utf-8' }
 
@@ -70,10 +77,44 @@ function formatClock(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return String(value || '')
   return date.toLocaleTimeString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
     hour12: false,
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+function formatBjt(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value || '')
+  return date
+    .toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    })
+    .replaceAll('/', '-')
+}
+
+function formatBytes(value) {
+  const size = Number(value || 0)
+  if (!size) return '-'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+function normalizeMonitorCallsign(value) {
+  return String(value || '').trim().toUpperCase()
+}
+
+function getExcelFilename(item) {
+  return `${item.title || 'log'}.xlsx`
 }
 
 function getExportTimeRange(records) {
@@ -282,7 +323,7 @@ function isAdminSession(req) {
 
 function redirectToLogin(req, res) {
   const url = getRequestUrl(req)
-  const next = url.pathname.startsWith('/admin/') ? url.pathname : '/admin/monitor'
+  const next = url.pathname.startsWith('/admin') ? url.pathname : '/admin/'
   send(res, 302, '', { location: `${basePath}/admin/login?next=${encodeURIComponent(next)}` })
 }
 
@@ -298,7 +339,7 @@ function requireAdmin(req, res) {
 
 function renderAdminLogin(req, res, message = '') {
   const url = getRequestUrl(req)
-  const next = url.searchParams.get('next') || '/admin/monitor'
+  const next = url.searchParams.get('next') || '/admin/'
   send(
     res,
     200,
@@ -340,14 +381,14 @@ async function handleAdminLogin(req, res) {
   const form = new URLSearchParams(body)
   const username = form.get('username') || ''
   const password = form.get('password') || ''
-  const next = form.get('next') || '/admin/monitor'
+  const next = form.get('next') || '/admin/'
   if (!safeEqual(username, adminUser) || !safeEqual(password, adminPassword)) {
     await logUsage(req, 'admin-login-failed', { username })
     renderAdminLogin(req, res, '账号或密码不正确')
     return
   }
   await logUsage(req, 'admin-login', { username })
-  const safeNext = next.startsWith('/admin/') ? next : '/admin/monitor'
+  const safeNext = next.startsWith('/admin') ? next : '/admin/'
   send(res, 302, '', {
     location: `${basePath}${safeNext}`,
     'set-cookie': buildCookie(createSessionCookie(), req)
@@ -367,8 +408,38 @@ async function saveCheckin(req, res) {
   const payload = JSON.parse(body || '{}')
   const activity = payload.activityConfig || {}
   const records = Array.isArray(payload.records) ? payload.records : []
+  const activityId = String(payload.activityId || 'default')
+  const clientIp = getClientIp(req)
 
-  const id = `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomBytes(3).toString('hex')}`
+  if (isNetworkEdition) {
+    if (records.length > networkLimits.maxRecords) {
+      sendJson(res, 403, { ok: false, error: '网络版最多保存 60 条记录，请使用本地版。' })
+      return
+    }
+    const usage = await readUsage(0)
+    const now = Date.now()
+    const saves = usage.filter((item) => {
+      if (item.event !== 'save-checkin' || item.ip !== clientIp) return false
+      const savedAt = new Date(item.at).getTime()
+      return Number.isFinite(savedAt) && now - savedAt < networkLimits.resetWindowMs
+    })
+    const firstSaveAt = saves
+      .map((item) => new Date(item.at).getTime())
+      .filter((time) => Number.isFinite(time))
+      .sort((a, b) => a - b)[0]
+    if (firstSaveAt && now - firstSaveAt > networkLimits.durationMs) {
+      sendJson(res, 403, { ok: false, error: '网络版测试时长已超过 1 小时 15 分钟，请使用本地版。' })
+      return
+    }
+    const savedActivityIds = new Set(saves.map((item) => item.activityId).filter(Boolean))
+    if (!savedActivityIds.has(activityId) && savedActivityIds.size >= networkLimits.maxActivities) {
+      sendJson(res, 403, { ok: false, error: '网络版仅允许 1 个日志文件，请使用本地版。' })
+      return
+    }
+  }
+
+  const existing = (await listCheckins()).find((item) => item.activityId === activityId)
+  const id = existing?.id || `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomBytes(3).toString('hex')}`
   const title = sanitizeFilename(activity.name)
   const activityDir = path.join(dataDir, 'checkins', id)
   await fs.mkdir(activityDir, { recursive: true })
@@ -378,11 +449,13 @@ async function saveCheckin(req, res) {
     JSON.stringify(
       {
         id,
+        activityId,
         savedAt: new Date().toISOString(),
         title,
         activity,
         records,
         recordCount: records.length,
+        profileStats: payload.profileStats || null,
         client: payload.client || {}
       },
       null,
@@ -390,7 +463,13 @@ async function saveCheckin(req, res) {
     ),
     'utf8'
   )
-  await logUsage(req, 'save-checkin', { id, title, recordCount: records.length })
+  await logUsage(req, 'save-checkin', {
+    id,
+    activityId,
+    title,
+    recordCount: records.length,
+    profileStats: payload.profileStats || null
+  })
   sendJson(res, 200, {
     ok: true,
     id,
@@ -419,45 +498,246 @@ async function listCheckins() {
   return rows.sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)))
 }
 
-async function readRecentUsage(limit = 80) {
+async function readUsage(limit = 5000) {
   try {
     const raw = await fs.readFile(path.join(dataDir, 'logs', 'usage.jsonl'), 'utf8')
-    return raw
+    const rows = raw
       .trim()
       .split('\n')
       .filter(Boolean)
-      .slice(-limit)
-      .reverse()
       .map((line) => JSON.parse(line))
+    return limit ? rows.slice(-limit) : rows
   } catch {
     return []
   }
 }
 
+let baseProfileStatsCache = null
+
+async function readBaseProfileStats() {
+  if (baseProfileStatsCache) return baseProfileStatsCache
+  try {
+    const raw = await fs.readFile(path.join(distDir, 'base-profiles.json'), 'utf8')
+    const payload = JSON.parse(raw)
+    const profiles = Array.isArray(payload.profiles) ? payload.profiles : []
+    const callsigns = new Set()
+    const qths = new Set()
+    const devices = new Set()
+    let entries = 0
+
+    profiles.forEach((profile) => {
+      const callsign = normalizeMonitorCallsign(profile?.callsign)
+      if (callsign) callsigns.add(callsign)
+      ;['qth', 'device', 'power', 'mode', 'signal'].forEach((key) => {
+        const values = [
+          profile?.[key],
+          ...((profile?.history && Array.isArray(profile.history[key]) && profile.history[key]) || [])
+        ]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+        const uniqueValues = [...new Set(values)]
+        entries += uniqueValues.length
+        if (key === 'qth') uniqueValues.forEach((value) => qths.add(value))
+        if (key === 'device') uniqueValues.forEach((value) => devices.add(value))
+      })
+    })
+
+    baseProfileStatsCache = {
+      entries,
+      callsigns: callsigns.size,
+      qths: qths.size,
+      devices: devices.size
+    }
+  } catch {
+    baseProfileStatsCache = { entries: 0, callsigns: 0, qths: 0, devices: 0 }
+  }
+  return baseProfileStatsCache
+}
+
+function subtractProfileStats(total, base) {
+  return {
+    entries: Math.max(0, Number(total.entries || 0) - Number(base.entries || 0)),
+    callsigns: Math.max(0, Number(total.callsigns || 0) - Number(base.callsigns || 0)),
+    qths: Math.max(0, Number(total.qths || 0) - Number(base.qths || 0)),
+    devices: Math.max(0, Number(total.devices || 0) - Number(base.devices || 0))
+  }
+}
+
+function collectProfileStats(checkins, baseStats) {
+  const latestSnapshot = checkins.find((item) => item.profileStats)?.profileStats || null
+  const callsigns = new Set()
+  const qths = new Set()
+  const devices = new Set()
+  let recordEntries = 0
+
+  checkins.forEach((item) => {
+    ;(item.records || []).forEach((record) => {
+      const callsign = normalizeMonitorCallsign(record.callsign)
+      if (callsign) callsigns.add(callsign)
+      if (record.qth) qths.add(String(record.qth).trim())
+      if (record.device) devices.add(String(record.device).trim())
+      if (callsign || record.qth || record.device || record.power || record.mode || record.signal) recordEntries += 1
+    })
+  })
+
+  const fallbackAdded = {
+    entries: recordEntries,
+    callsigns: callsigns.size,
+    qths: qths.size,
+    devices: devices.size
+  }
+  const total = latestSnapshot
+    ? {
+        entries: Number(latestSnapshot.entries || 0),
+        callsigns: Number(latestSnapshot.callsigns || 0),
+        qths: Number(latestSnapshot.qths || 0),
+        devices: Number(latestSnapshot.devices || 0)
+      }
+    : {
+        entries: Number(baseStats.entries || 0) + fallbackAdded.entries,
+        callsigns: Number(baseStats.callsigns || 0) + fallbackAdded.callsigns,
+        qths: Number(baseStats.qths || 0) + fallbackAdded.qths,
+        devices: Number(baseStats.devices || 0) + fallbackAdded.devices
+      }
+
+  return {
+    total,
+    base: baseStats,
+    added: latestSnapshot ? subtractProfileStats(total, baseStats) : fallbackAdded,
+    entries: total.entries,
+    callsigns: total.callsigns,
+    qths: total.qths,
+    devices: total.devices,
+    snapshotAt: latestSnapshot?.capturedAt || ''
+  }
+}
+
+function collectCallsignStats(checkins) {
+  const map = new Map()
+  checkins.forEach((item) => {
+    ;(item.records || []).forEach((record) => {
+      const callsign = normalizeMonitorCallsign(record.callsign)
+      if (!callsign) return
+      const row = map.get(callsign) || {
+        callsign,
+        count: 0,
+        qths: new Set(),
+        devices: new Set(),
+        latestAt: ''
+      }
+      row.count += 1
+      if (record.qth) row.qths.add(String(record.qth).trim())
+      if (record.device) row.devices.add(String(record.device).trim())
+      const time = record.time || record.createdAt || item.savedAt || ''
+      if (String(time).localeCompare(String(row.latestAt)) > 0) row.latestAt = time
+      map.set(callsign, row)
+    })
+  })
+  return [...map.values()]
+    .sort((a, b) => b.count - a.count || a.callsign.localeCompare(b.callsign))
+    .map((row) => ({
+      ...row,
+      qthCount: row.qths.size,
+      deviceCount: row.devices.size
+    }))
+}
+
+function collectUsageStats(usage) {
+  const loginIps = new Set()
+  const downloadIps = new Set()
+  let downloadCount = 0
+  usage.forEach((item) => {
+    if (item.event === 'admin-login' && item.ip) loginIps.add(item.ip)
+    if (item.event === 'download-checkin-file') {
+      downloadCount += 1
+      if (item.ip) downloadIps.add(item.ip)
+    }
+  })
+  return {
+    loginUniqueIpCount: loginIps.size,
+    downloadCount,
+    downloadUniqueIpCount: downloadIps.size
+  }
+}
+
+async function enrichCheckins(checkins, usage) {
+  const downloadCounts = new Map()
+  usage.forEach((item) => {
+    if (item.event === 'download-checkin-file' && item.id) {
+      downloadCounts.set(item.id, (downloadCounts.get(item.id) || 0) + 1)
+    }
+  })
+
+  const enriched = []
+  for (const item of checkins) {
+    const filename = getExcelFilename(item)
+    const file = path.join(dataDir, 'checkins', item.id, filename)
+    let fileStat = null
+    try {
+      const stat = await fs.stat(file)
+      if (stat.isFile()) fileStat = stat
+    } catch {
+      /* missing file */
+    }
+    enriched.push({
+      ...item,
+      filename,
+      fileExists: Boolean(fileStat),
+      fileSize: fileStat?.size || 0,
+      downloadCount: downloadCounts.get(item.id) || 0
+    })
+  }
+  return enriched
+}
+
 async function monitorPage(req, res) {
   if (!requireAdmin(req, res)) return
-  const [checkins, usage] = await Promise.all([listCheckins(), readRecentUsage()])
+  const [rawCheckins, usage, baseProfileStats] = await Promise.all([
+    listCheckins(),
+    readUsage(0),
+    readBaseProfileStats()
+  ])
+  const checkins = await enrichCheckins(rawCheckins, usage)
   const totalRecords = checkins.reduce((sum, item) => sum + Number(item.recordCount || 0), 0)
+  const profileStats = collectProfileStats(checkins, baseProfileStats)
+  const callsignStats = collectCallsignStats(checkins)
+  const topCallsignStats = callsignStats.slice(0, 20)
+  const usageStats = collectUsageStats(usage)
+  const generatedExcelCount = checkins.filter((item) => item.fileExists).length
   const rows = checkins
     .slice(0, 60)
     .map(
       (item) => `<tr>
-        <td>${item.savedAt || ''}</td>
-        <td>${item.title || ''}</td>
-        <td>${item.activity?.controlCallsign || ''}</td>
+        <td>${formatBjt(item.savedAt)}</td>
+        <td>${escapeHtml(item.title || '')}</td>
+        <td>${escapeHtml(normalizeMonitorCallsign(item.activity?.controlCallsign || ''))}</td>
         <td>${item.recordCount || 0}</td>
-        <td><a href="${basePath}/admin/checkins/${item.id}/${encodeURIComponent(item.title || 'log')}.xlsx">Excel</a></td>
+        <td>${item.fileExists ? `<a href="${basePath}/admin/checkins/${item.id}/${encodeURIComponent(item.filename)}">${escapeHtml(item.filename)}</a>` : '文件缺失'}</td>
+        <td>${formatBytes(item.fileSize)}</td>
+        <td>${item.downloadCount}</td>
       </tr>`
     )
     .join('')
-  const usageRows = usage
+  const callsignRows = topCallsignStats
+    .map(
+      (item) => `<tr>
+        <td><strong>${escapeHtml(item.callsign)}</strong></td>
+        <td>${item.count}</td>
+        <td>${item.qthCount}</td>
+        <td>${item.deviceCount}</td>
+        <td>${formatBjt(item.latestAt)}</td>
+      </tr>`
+    )
+    .join('')
+  const usageRows = [...usage]
+    .reverse()
     .slice(0, 80)
     .map(
       (item) => `<tr>
-        <td>${item.at || ''}</td>
-        <td>${item.event || ''}</td>
-        <td>${item.ip || ''}</td>
-        <td>${item.path || ''}</td>
+        <td>${formatBjt(item.at)}</td>
+        <td>${escapeHtml(item.event || '')}</td>
+        <td>${escapeHtml(item.ip || '')}</td>
+        <td>${escapeHtml(item.path || '')}</td>
       </tr>`
     )
     .join('')
@@ -469,25 +749,36 @@ async function monitorPage(req, res) {
     <title>台网点名主控台监控</title>
     <style>
       body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;margin:0;background:#edf1ef;color:#18231f}
-      main{max-width:1180px;margin:0 auto;padding:24px}
+      main{max-width:1280px;margin:0 auto;padding:24px}
       .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
       h1{font-size:24px;margin:0}
-      .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px}
+      h2{font-size:18px;margin:0 0 12px}
+      .cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
       .card,section{background:#fff;border:1px solid #d5ddd8;border-radius:8px;padding:14px}
       .num{font-size:30px;font-weight:800;color:#008c2a}
+      .hint{color:#65716c;font-size:12px;margin-top:4px}
       table{border-collapse:collapse;width:100%;font-size:13px}
       th,td{border-bottom:1px solid #d5ddd8;padding:7px 8px;text-align:left}
       th{background:#eef3f0}
       section{margin-top:14px;overflow:auto}
       a{color:#0b78d0}
+      @media(max-width:900px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
     </style></head><body><main>
     <div class="topbar"><h1>台网点名主控台监控</h1><a href="${basePath}/admin/logout">退出登录</a></div>
     <div class="cards">
       <div class="card"><div>保存次数</div><div class="num">${checkins.length}</div></div>
       <div class="card"><div>累计记录</div><div class="num">${totalRecords}</div></div>
-      <div class="card"><div>最近保存</div><div class="num" style="font-size:18px">${checkins[0]?.savedAt || '暂无'}</div></div>
+      <div class="card"><div>Excel 新生成</div><div class="num">${generatedExcelCount}</div><div class="hint">有效文件可点击下载</div></div>
+      <div class="card"><div>Excel 下载</div><div class="num">${usageStats.downloadCount}</div><div class="hint">独立 IP ${usageStats.downloadUniqueIpCount}</div></div>
+      <div class="card"><div>登录独立 IP</div><div class="num">${usageStats.loginUniqueIpCount}</div></div>
+      <div class="card"><div>合并后呼号</div><div class="num">${callsignStats.length}</div><div class="hint">大小写已合并</div></div>
+      <div class="card"><div>基础库 呼号 / QTH / 设备</div><div class="num" style="font-size:24px">${profileStats.base.callsigns} / ${profileStats.base.qths} / ${profileStats.base.devices}</div><div class="hint">基础条目 ${profileStats.base.entries}</div></div>
+      <div class="card"><div>本地库新增条目</div><div class="num">${profileStats.added.entries}</div><div class="hint">快照 ${profileStats.snapshotAt ? formatBjt(profileStats.snapshotAt) : '按记录推算'}</div></div>
+      <div class="card"><div>新增 呼号 / QTH / 设备</div><div class="num" style="font-size:24px">${profileStats.added.callsigns} / ${profileStats.added.qths} / ${profileStats.added.devices}</div></div>
+      <div class="card"><div>最近保存</div><div class="num" style="font-size:18px">${checkins[0]?.savedAt ? formatBjt(checkins[0].savedAt) : '暂无'}</div><div class="hint">UTC+8 北京时间</div></div>
     </div>
-    <section><h2>保存日志</h2><table><thead><tr><th>时间</th><th>活动</th><th>主控</th><th>条数</th><th>文件</th></tr></thead><tbody>${rows}</tbody></table></section>
+    <section><h2>Excel 保存日志</h2><table><thead><tr><th>时间 (UTC+8)</th><th>活动</th><th>主控</th><th>条数</th><th>有效文件</th><th>大小</th><th>下载</th></tr></thead><tbody>${rows}</tbody></table></section>
+    <section><h2>合并呼号统计 TOP 20</h2><table><thead><tr><th>呼号</th><th>记录数</th><th>QTH 数</th><th>设备数</th><th>最近出现 (UTC+8)</th></tr></thead><tbody>${callsignRows}</tbody></table></section>
     <section><h2>访问/操作记录</h2><table><thead><tr><th>时间</th><th>事件</th><th>IP</th><th>路径</th></tr></thead><tbody>${usageRows}</tbody></table></section>
     </main></body></html>`,
     { 'content-type': 'text/html; charset=utf-8' }
@@ -676,14 +967,25 @@ async function serveCheckinFile(req, res) {
     send(res, 403, 'Forbidden')
     return
   }
+  let stat
+  try {
+    stat = await fs.stat(file)
+    if (!stat.isFile()) throw new Error('not file')
+  } catch {
+    send(res, 404, 'Not Found')
+    return
+  }
+  await logUsage(req, 'download-checkin-file', {
+    id,
+    filename: path.basename(file),
+    bytes: stat.size
+  })
   const ext = path.extname(file)
   res.writeHead(200, {
     'content-type': mimeTypes[ext] || 'application/octet-stream',
     'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(file))}`
   })
-  createReadStream(file)
-    .on('error', () => send(res, 404, 'Not Found'))
-    .pipe(res)
+  createReadStream(file).pipe(res)
 }
 
 async function serveStatic(req, res) {
@@ -732,8 +1034,10 @@ export async function startServer({ host = '127.0.0.1', port = defaultPort } = {
       if (req.method === 'GET' && url.pathname === '/admin/login') return renderAdminLogin(req, res)
       if (req.method === 'POST' && url.pathname === '/admin/login') return handleAdminLogin(req, res)
       if (url.pathname === '/admin/logout') return handleAdminLogout(req, res)
-      if (url.pathname === '/admin/monitor') return monitorPage(req, res)
+      if (url.pathname === '/admin') return send(res, 302, '', { location: `${basePath}/admin/` })
+      if (url.pathname === '/admin/') return monitorPage(req, res)
       if (url.pathname.startsWith('/admin/checkins/')) return serveCheckinFile(req, res)
+      if (url.pathname.startsWith('/admin/')) return send(res, 404, 'Not Found', { 'content-type': 'text/plain; charset=utf-8' })
       if (req.method === 'GET' || req.method === 'HEAD') {
         if (!url.pathname.startsWith('/assets/')) logUsage(req, 'page-view').catch(() => {})
         return serveStatic(req, res)

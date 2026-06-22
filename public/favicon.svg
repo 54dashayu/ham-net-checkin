@@ -1,14 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="HAM 台网点名主控台">
-  <rect x="10" y="10" width="236" height="236" rx="40" fill="#e8fff1" stroke="#91d7a8" stroke-width="8"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="HAM 台网点名主控台">
+  <rect x="24" y="24" width="464" height="464" rx="92" fill="#8bd8a6"/>
+  <rect x="40" y="40" width="432" height="432" rx="78" fill="#eafff1"/>
   <g fill="none" stroke-linecap="round">
-    <path d="M86 86a60 60 0 0 0 0 84" stroke="#19a653" stroke-width="12"/>
-    <path d="M170 86a60 60 0 0 1 0 84" stroke="#19a653" stroke-width="12"/>
-    <path d="M64 62a92 92 0 0 0 0 132" stroke="#07883a" stroke-width="12"/>
-    <path d="M192 62a92 92 0 0 1 0 132" stroke="#07883a" stroke-width="12"/>
+    <path d="M210 200a72 72 0 0 0 0 124" stroke="#2fae62" stroke-width="18" opacity=".68"/>
+    <path d="M306 200a72 72 0 0 1 0 124" stroke="#2fae62" stroke-width="18" opacity=".68"/>
+    <path d="M172 164a118 118 0 0 0 0 196" stroke="#2fae62" stroke-width="14" opacity=".58"/>
+    <path d="M344 164a118 118 0 0 1 0 196" stroke="#2fae62" stroke-width="14" opacity=".58"/>
+    <path d="M138 126a164 164 0 0 0 0 272" stroke="#07883a" stroke-width="14" opacity=".43"/>
+    <path d="M378 126a164 164 0 0 1 0 272" stroke="#07883a" stroke-width="14" opacity=".43"/>
   </g>
-  <rect x="112" y="86" width="32" height="92" rx="16" fill="#07883a"/>
-  <circle cx="128" cy="76" r="18" fill="#07883a"/>
-  <circle cx="128" cy="76" r="7" fill="#fff"/>
-  <rect x="76" y="176" width="104" height="22" rx="11" fill="#07883a"/>
-  <rect x="92" y="202" width="72" height="18" rx="9" fill="#19a653"/>
+  <path d="M292 64H138L80 216h124l-44 254 236-280H280l72-126h-60Z" fill="#123820" opacity=".25"/>
+  <path d="M282 52H128L70 204h124l-44 254 236-280H270l72-126h-60Z" fill="#7f36ff"/>
+  <path d="M292 68 246 180h96L216 332l32-118H132l54-146h106Z" fill="#42c6ff" opacity=".45"/>
+  <path d="M166 76 120 184h36l46-108h-36Z" fill="#fff" opacity=".45"/>
+  <path d="M72 204h122l-14 82" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" opacity=".18"/>
 </svg>

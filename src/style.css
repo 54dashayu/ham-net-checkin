@@ -55,6 +55,49 @@ button {
   padding: 12px;
 }
 
+.app-shell.has-public-bar {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.public-limit-bar {
+  align-items: center;
+  background: #fff7f5;
+  border: 1px solid rgba(200, 59, 50, 0.28);
+  border-radius: 8px;
+  color: var(--danger);
+  display: flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 10px;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  text-align: center;
+}
+
+.public-limit-bar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.public-limit-bar button {
+  appearance: none;
+  background: #fff;
+  border: 1px solid rgba(200, 59, 50, 0.35);
+  border-radius: 6px;
+  color: var(--danger);
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.public-limit-bar button:hover {
+  background: #ffeceb;
+}
+
 .activity-band {
   align-items: end;
   background: var(--panel-strong);
