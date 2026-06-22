@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
-  Code2,
   Download,
   FileSpreadsheet,
   FilePlus2,
@@ -2774,7 +2773,7 @@ onUnmounted(() => {
           <button type="button" class="icon-button" title="关闭" @click="authorQrOpen = false">X</button>
         </div>
         <img :src="authorQrCodeUrl" alt="作者微信二维码" />
-        <p>请使用微信扫码联系 BH1JSS 机婶婶。</p>
+        <p>请使用微信扫码</p>
       </div>
     </div>
 
@@ -2971,10 +2970,12 @@ onUnmounted(() => {
 
     <footer class="app-footer">
       <span>台网点名主控台 由 BH1JSS 机婶婶 贡献</span>
-      <span class="footer-link">
-        <Code2 :size="18" />
-        开源项目，欢迎分享
-      </span>
+      <a class="footer-link" href="https://github.com/54dashayu/ham-net-checkin" target="_blank" rel="noreferrer">
+        <svg aria-hidden="true" viewBox="0 0 19 19">
+          <use :href="`${serverBasePath}/icons.svg#github-icon`"></use>
+        </svg>
+        GitHub 仓库
+      </a>
     </footer>
 
     <p v-if="notice" class="toast" :class="{ top: noticePosition === 'top' }" role="status">

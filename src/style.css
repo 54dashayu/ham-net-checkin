@@ -941,9 +941,24 @@ tbody tr:nth-child(even) {
 
 .footer-link {
   align-items: center;
+  color: #55645e;
   display: inline-flex;
   gap: 9px;
+  text-decoration: none;
   white-space: nowrap;
+}
+
+.footer-link:hover {
+  color: var(--accent);
+}
+
+.footer-link svg {
+  height: 18px;
+  width: 18px;
+}
+
+.footer-link svg path {
+  fill: currentColor;
 }
 
 .modal-backdrop {
@@ -970,6 +985,10 @@ tbody tr:nth-child(even) {
 }
 
 .compact-modal {
+  align-items: flex-end;
+  background: transparent;
+  justify-content: flex-end;
+  pointer-events: none;
   z-index: 40;
 }
 
@@ -977,12 +996,14 @@ tbody tr:nth-child(even) {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 8px;
-  box-shadow: 0 18px 48px rgba(20, 34, 28, 0.22);
+  box-shadow: 0 14px 38px rgba(20, 34, 28, 0.22);
   display: grid;
-  gap: 12px;
-  max-width: 360px;
-  padding: 14px;
-  width: min(360px, 100%);
+  gap: 10px;
+  margin: 0 18px 18px 0;
+  max-width: 240px;
+  padding: 12px;
+  pointer-events: auto;
+  width: min(240px, calc(100vw - 36px));
 }
 
 .author-qr-modal .modal-head {
@@ -993,7 +1014,7 @@ tbody tr:nth-child(even) {
 }
 
 .author-qr-modal h2 {
-  font-size: 18px;
+  font-size: 15px;
   margin: 0;
 }
 
@@ -1008,7 +1029,7 @@ tbody tr:nth-child(even) {
 
 .author-qr-modal p {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
   margin: 0;
   text-align: center;
 }
