@@ -8,7 +8,7 @@ const sources = [
   path.join(rootDir, 'references/original-windows-tool/M TG46001.db3'),
   path.join(rootDir, 'references/original-windows-tool/M YSF C4FM.db3')
 ]
-const outputFile = path.join(rootDir, 'public/base-profiles.json')
+const outputFile = path.join(rootDir, 'data/profiles/base-profiles.json')
 
 const normalizeCallsign = (value) =>
   String(value || '')

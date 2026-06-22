@@ -194,6 +194,7 @@ function createVerificationCode() {
 const profileFields = ['qth', 'device', 'power', 'mode', 'signal']
 
 const sharedProfilesFile = () => path.join(dataDir, 'profiles', 'shared-profiles.json')
+const baseProfilesFile = () => path.join(dataDir, 'profiles', 'base-profiles.json')
 const profileRegistrationsFile = () => path.join(dataDir, 'profiles', 'profile-registrations.json')
 
 function uniqueProfileValues(values, limit = 48) {
@@ -278,6 +279,42 @@ async function readSharedProfiles() {
   } catch {
     return { version: 1, updatedAt: '', profiles: [] }
   }
+}
+
+async function readBaseProfiles() {
+  const candidates = [baseProfilesFile(), path.join(distDir, 'base-profiles.json')]
+  for (const file of candidates) {
+    try {
+      const raw = await fs.readFile(file, 'utf8')
+      const payload = JSON.parse(raw)
+      const profiles = Array.isArray(payload.profiles)
+        ? payload.profiles.map(normalizeSharedProfile).filter((profile) => profile.callsign)
+        : []
+      return {
+        version: Number(payload.version || 1),
+        updatedAt: String(payload.updatedAt || payload.generatedAt || ''),
+        profiles
+      }
+    } catch {
+      // Try the next source.
+    }
+  }
+  return { version: 1, updatedAt: '', profiles: [] }
+}
+
+function mergeProfileLists(baseProfiles, sharedProfiles) {
+  const profileMap = new Map()
+  baseProfiles
+    .map(normalizeSharedProfile)
+    .filter((profile) => profile.callsign)
+    .forEach((profile) => profileMap.set(profile.callsign, profile))
+  sharedProfiles
+    .map(normalizeSharedProfile)
+    .filter((profile) => profile.callsign)
+    .forEach((profile) => {
+      profileMap.set(profile.callsign, mergeSharedProfile(profileMap.get(profile.callsign), profile))
+    })
+  return [...profileMap.values()].sort((a, b) => a.callsign.localeCompare(b.callsign))
 }
 
 async function writeSharedProfiles(payload) {
@@ -796,15 +833,22 @@ async function saveCheckin(req, res) {
 async function pullSharedProfiles(req, res) {
   const registration = await requireProfileRegistration(req, res)
   if (!registration) return
-  const payload = await readSharedProfiles()
-  await logUsage(req, 'profiles-pull', { count: payload.profiles.length })
+  const [basePayload, sharedPayload] = await Promise.all([readBaseProfiles(), readSharedProfiles()])
+  const profiles = mergeProfileLists(basePayload.profiles, sharedPayload.profiles)
+  await logUsage(req, 'profiles-pull', {
+    count: profiles.length,
+    baseCount: basePayload.profiles.length,
+    sharedCount: sharedPayload.profiles.length
+  })
   sendProfileJson(res, 200, {
     ok: true,
-    version: payload.version,
-    updatedAt: payload.updatedAt,
-    count: payload.profiles.length,
-    stats: getSharedProfileStats(payload.profiles),
-    profiles: payload.profiles
+    version: Math.max(basePayload.version || 1, sharedPayload.version || 1),
+    updatedAt: [basePayload.updatedAt, sharedPayload.updatedAt].filter(Boolean).sort().at(-1) || '',
+    count: profiles.length,
+    baseCount: basePayload.profiles.length,
+    sharedCount: sharedPayload.profiles.length,
+    stats: getSharedProfileStats(profiles),
+    profiles
   })
 }
 
@@ -1000,8 +1044,7 @@ let baseProfileStatsCache = null
 async function readBaseProfileStats() {
   if (baseProfileStatsCache) return baseProfileStatsCache
   try {
-    const raw = await fs.readFile(path.join(distDir, 'base-profiles.json'), 'utf8')
-    const payload = JSON.parse(raw)
+    const payload = await readBaseProfiles()
     const profiles = Array.isArray(payload.profiles) ? payload.profiles : []
     const callsigns = new Set()
     const qths = new Set()
@@ -1125,6 +1168,81 @@ function collectCallsignStats(checkins) {
     }))
 }
 
+function formatDurationMs(ms) {
+  const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours) return `${hours}小时${minutes}分`
+  if (minutes) return `${minutes}分${seconds}秒`
+  return `${seconds}秒`
+}
+
+function buildUsageSessions(usage) {
+  const byIp = new Map()
+  ;[...usage]
+    .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')))
+    .forEach((item) => {
+      if (!item.ip || !item.at) return
+      const atMs = new Date(item.at).getTime()
+      if (!Number.isFinite(atMs)) return
+      const sessions = byIp.get(item.ip) || []
+      const latest = sessions.at(-1)
+      if (latest && atMs - latest.lastMs <= 30 * 60 * 1000) {
+        latest.lastAt = item.at
+        latest.lastMs = atMs
+        latest.events += 1
+      } else {
+        sessions.push({
+          ip: item.ip,
+          firstAt: item.at,
+          firstMs: atMs,
+          lastAt: item.at,
+          lastMs: atMs,
+          events: 1
+        })
+      }
+      byIp.set(item.ip, sessions)
+    })
+  return byIp
+}
+
+function findUsageSession(sessionsByIp, ip, at) {
+  const atMs = new Date(at || '').getTime()
+  if (!ip || !Number.isFinite(atMs)) return null
+  return (sessionsByIp.get(ip) || []).find((session) => atMs >= session.firstMs && atMs <= session.lastMs + 30 * 60 * 1000) || null
+}
+
+function getProfileFieldValues(profile, field) {
+  return [
+    profile?.[field],
+    ...((profile?.history && Array.isArray(profile.history[field]) && profile.history[field]) || [])
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+}
+
+function buildProfileSearchRows(query, profiles, callsignStats) {
+  const normalizedQuery = String(query || '').trim().toUpperCase()
+  if (!normalizedQuery) return []
+  const statsMap = new Map(callsignStats.map((item) => [item.callsign, item]))
+  const rows = profiles
+    .map(normalizeSharedProfile)
+    .filter((profile) => profile.callsign)
+    .filter((profile) => JSON.stringify(profile).toUpperCase().includes(normalizedQuery))
+    .slice(0, 80)
+    .map((profile) => {
+      const stats = statsMap.get(profile.callsign)
+      return {
+        callsign: profile.callsign,
+        qth: getProfileFieldValues(profile, 'qth').join(' / ') || '-',
+        device: getProfileFieldValues(profile, 'device').join(' / ') || '-',
+        latestAt: stats?.latestAt || profile.lastCheckinAt || profile.updatedAt || ''
+      }
+    })
+  return rows
+}
+
 function collectUsageStats(usage) {
   const loginIps = new Set()
   const downloadIps = new Set()
@@ -1145,9 +1263,13 @@ function collectUsageStats(usage) {
 
 async function enrichCheckins(checkins, usage) {
   const downloadCounts = new Map()
+  const saveEvents = new Map()
   usage.forEach((item) => {
     if (item.event === 'download-checkin-file' && item.id) {
       downloadCounts.set(item.id, (downloadCounts.get(item.id) || 0) + 1)
+    }
+    if (item.event === 'save-checkin' && item.id) {
+      saveEvents.set(item.id, item)
     }
   })
 
@@ -1167,7 +1289,8 @@ async function enrichCheckins(checkins, usage) {
       filename,
       fileExists: Boolean(fileStat),
       fileSize: fileStat?.size || 0,
-      downloadCount: downloadCounts.get(item.id) || 0
+      downloadCount: downloadCounts.get(item.id) || 0,
+      saveEvent: saveEvents.get(item.id) || null
     })
   }
   return enriched
@@ -1175,10 +1298,13 @@ async function enrichCheckins(checkins, usage) {
 
 async function monitorPage(req, res) {
   if (!requireAdmin(req, res)) return
-  const [rawCheckins, usage, baseProfileStats, sharedProfilePayload, registrations] = await Promise.all([
+  const url = getRequestUrl(req)
+  const profileQuery = String(url.searchParams.get('profileQuery') || '').trim()
+  const [rawCheckins, usage, baseProfileStats, baseProfilePayload, sharedProfilePayload, registrations] = await Promise.all([
     listCheckins(),
     readUsage(0),
     readBaseProfileStats(),
+    readBaseProfiles(),
     readSharedProfiles(),
     readProfileRegistrations()
   ])
@@ -1187,10 +1313,12 @@ async function monitorPage(req, res) {
   const profileStats = collectProfileStats(checkins, baseProfileStats)
   const sharedProfileStats = getSharedProfileStats(sharedProfilePayload.profiles)
   const callsignStats = collectCallsignStats(checkins)
-  const topCallsignStats = callsignStats.slice(0, 20)
   const usageStats = collectUsageStats(usage)
   const generatedExcelCount = checkins.filter((item) => item.fileExists).length
   const pendingRegistrationCount = registrations.filter((item) => item.status === 'pending').length
+  const mergedProfiles = mergeProfileLists(baseProfilePayload.profiles, sharedProfilePayload.profiles)
+  const profileSearchRows = buildProfileSearchRows(profileQuery, mergedProfiles, callsignStats)
+  const usageSessions = buildUsageSessions(usage)
   const rows = checkins
     .slice(0, 60)
     .map(
@@ -1204,30 +1332,33 @@ async function monitorPage(req, res) {
         <td>${item.downloadCount}</td>
       </tr>`
     )
-    .join('')
-  const callsignRows = topCallsignStats
+    .join('') || '<tr><td colspan="7">暂无 Excel 保存日志</td></tr>'
+  const profileRows = profileSearchRows
     .map(
       (item) => `<tr>
         <td><strong>${escapeHtml(item.callsign)}</strong></td>
-        <td>${item.count}</td>
-        <td>${item.qthCount}</td>
-        <td>${item.deviceCount}</td>
+        <td>${escapeHtml(item.qth)}</td>
+        <td>${escapeHtml(item.device)}</td>
         <td>${formatBjt(item.latestAt)}</td>
       </tr>`
     )
-    .join('')
-  const usageRows = [...usage]
-    .reverse()
+    .join('') || `<tr><td colspan="4">${profileQuery ? '未查询到匹配呼号资料' : '请输入呼号或关键字查询'}</td></tr>`
+  const usageRows = checkins
     .slice(0, 80)
     .map(
-      (item) => `<tr>
-        <td>${formatBjt(item.at)}</td>
-        <td>${escapeHtml(item.event || '')}</td>
-        <td>${escapeHtml(item.ip || '')}</td>
-        <td>${escapeHtml(item.path || '')}</td>
+      (item) => {
+        const event = item.saveEvent
+        const session = findUsageSession(usageSessions, event?.ip, event?.at || item.savedAt)
+        return `<tr>
+        <td><strong>${escapeHtml(normalizeMonitorCallsign(item.activity?.controlCallsign || '')) || '-'}</strong></td>
+        <td>${formatBjt(item.savedAt)}</td>
+        <td>${escapeHtml(event?.ip || '')}</td>
+        <td>${formatBjt(session?.firstAt || event?.at || '')}</td>
+        <td>${session ? formatDurationMs(session.lastMs - session.firstMs) : '-'}</td>
       </tr>`
+      }
     )
-    .join('')
+    .join('') || '<tr><td colspan="5">暂无访问操作记录</td></tr>'
   const registrationRows = registrations
     .slice(0, 80)
     .map(
@@ -1249,7 +1380,7 @@ async function monitorPage(req, res) {
         </td>
       </tr>`
     )
-    .join('')
+    .join('') || '<tr><td colspan="8">暂无注册申请</td></tr>'
   send(
     res,
     200,
@@ -1269,16 +1400,25 @@ async function monitorPage(req, res) {
       table{border-collapse:collapse;width:100%;font-size:13px}
       th,td{border-bottom:1px solid #d5ddd8;padding:7px 8px;text-align:left}
       th{background:#eef3f0}
+      .table-scroll{max-height:391px;overflow:auto;border:1px solid #d5ddd8;border-radius:8px}
+      .table-scroll table{border:0}
+      .table-scroll th{position:sticky;top:0;z-index:1}
+      .table-scroll td:first-child,.table-scroll th:first-child{padding-left:10px}
       code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-weight:800;color:#008c2a}
       .key-link{display:inline-block;border:1px solid #91d4a2;border-radius:6px;background:#f3fbf5;color:#008c2a;font-weight:800;padding:5px 9px;text-decoration:none;white-space:nowrap}
       .actions{display:flex;gap:8px;white-space:nowrap}
       form{margin:0}
       button{background:#fff;border:1px solid #a8b6af;border-radius:6px;padding:5px 9px;font:inherit;font-weight:700;cursor:pointer}
       button:hover{border-color:#008c2a;color:#008c2a}
-      section{margin-top:14px;overflow:auto}
+      section{margin-top:14px;overflow:hidden}
       a{color:#0b78d0}
+      .profile-search{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+      .profile-search input{min-width:280px;flex:0 1 420px;border:1px solid #a8b6af;border-radius:8px;padding:8px 10px;font:inherit}
+      .profile-search .hint{margin:0}
+      .back-top{position:fixed;right:20px;bottom:24px;width:46px;height:46px;border-radius:999px;border:1px solid #a8b6af;background:#fff;color:#008c2a;font-size:24px;font-weight:900;box-shadow:0 10px 24px rgba(0,0,0,.12);display:grid;place-items:center;text-decoration:none}
+      .back-top:hover{border-color:#008c2a;background:#f3fbf5}
       @media(max-width:900px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    </style></head><body><main>
+    </style></head><body><main id="top">
     <div class="topbar"><h1>台网点名主控台监控</h1><a href="${basePath}/admin/logout">退出登录</a></div>
     <div class="cards">
       <div class="card"><div>保存次数</div><div class="num">${checkins.length}</div></div>
@@ -1294,11 +1434,19 @@ async function monitorPage(req, res) {
       <div class="card"><div>新增 呼号 / QTH / 设备</div><div class="num" style="font-size:24px">${profileStats.added.callsigns} / ${profileStats.added.qths} / ${profileStats.added.devices}</div></div>
       <div class="card"><div>最近保存</div><div class="num" style="font-size:18px">${checkins[0]?.savedAt ? formatBjt(checkins[0].savedAt) : '暂无'}</div><div class="hint">UTC+8 北京时间</div></div>
     </div>
-    <section><h2>共享呼号资料库注册审核</h2><table><thead><tr><th>时间</th><th>呼号</th><th>CRAC 操作证书号</th><th>常用 QTH</th><th>常用服务器</th><th>状态</th><th>验证密钥</th><th>操作</th></tr></thead><tbody>${registrationRows}</tbody></table></section>
-    <section><h2>Excel 保存日志</h2><table><thead><tr><th>时间 (UTC+8)</th><th>活动</th><th>主控</th><th>条数</th><th>有效文件</th><th>大小</th><th>下载</th></tr></thead><tbody>${rows}</tbody></table></section>
-    <section><h2>合并呼号统计 TOP 20</h2><table><thead><tr><th>呼号</th><th>记录数</th><th>QTH 数</th><th>设备数</th><th>最近出现 (UTC+8)</th></tr></thead><tbody>${callsignRows}</tbody></table></section>
-    <section><h2>访问/操作记录</h2><table><thead><tr><th>时间</th><th>事件</th><th>IP</th><th>路径</th></tr></thead><tbody>${usageRows}</tbody></table></section>
-    </main></body></html>`,
+    <section><h2>共享呼号资料库注册审核</h2><div class="table-scroll"><table><thead><tr><th>时间</th><th>呼号</th><th>CRAC 操作证书号</th><th>常用 QTH</th><th>常用服务器</th><th>状态</th><th>验证密钥</th><th>操作</th></tr></thead><tbody>${registrationRows}</tbody></table></div></section>
+    <section><h2>Excel 保存日志</h2><div class="table-scroll"><table><thead><tr><th>时间 (UTC+8)</th><th>活动</th><th>主控</th><th>条数</th><th>有效文件</th><th>大小</th><th>下载</th></tr></thead><tbody>${rows}</tbody></table></div></section>
+    <section>
+      <h2>呼号库查询</h2>
+      <form class="profile-search" method="get" action="${basePath}/admin/">
+        <input name="profileQuery" value="${escapeHtml(profileQuery)}" placeholder="输入呼号、QTH、设备或关键字" autocomplete="off" />
+        <button type="submit">查询</button>
+        <span class="hint">支持完整呼号或模糊关键字，结果来自基础库 + 共享库。</span>
+      </form>
+      <div class="table-scroll"><table><thead><tr><th>呼号</th><th>QTH</th><th>设备</th><th>记录时间 / 参与时间 (UTC+8)</th></tr></thead><tbody>${profileRows}</tbody></table></div>
+    </section>
+    <section><h2>访问操作记录</h2><div class="table-scroll"><table><thead><tr><th>主控呼号</th><th>建立日志时间</th><th>IP</th><th>IP 登录时间</th><th>持续时长</th></tr></thead><tbody>${usageRows}</tbody></table></div></section>
+    </main><a class="back-top" href="#top" title="回到顶部">↑</a></body></html>`,
     { 'content-type': 'text/html; charset=utf-8' }
   )
 }

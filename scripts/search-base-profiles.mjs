@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const dataFile = path.join(rootDir, 'public/base-profiles.json')
+const dataFile = path.join(rootDir, 'data/profiles/base-profiles.json')
 const keyword = process.argv.slice(2).join(' ').trim().toUpperCase()
 
 if (!keyword) {

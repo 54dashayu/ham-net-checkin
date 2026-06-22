@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import packageJson from './package.json' with { type: 'json' }
 
 function splitSocketIoPayload(payload) {
   return String(payload || '')
@@ -194,5 +195,8 @@ function mmdvmProxyPlugin() {
 // https://vite.dev/config/
 export default defineConfig({
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify(packageJson.version)
+  },
   plugins: [vue(), mmdvmProxyPlugin()],
 })

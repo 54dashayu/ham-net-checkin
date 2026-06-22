@@ -27,3 +27,6 @@ references/original-windows-tool
 *.njsproj
 *.sln
 *.sw?
+
+# Generated profile library
+public/base-profiles.json

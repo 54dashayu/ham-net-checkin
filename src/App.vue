@@ -67,6 +67,7 @@ const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || get
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
+const appVersion = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : ''
 
 const formatLocalDate = (date = new Date()) => {
   const year = date.getFullYear()
@@ -622,6 +623,9 @@ const hasProfileSyncRegistration = computed(
       String(profileSyncConfig.registrationRepeater || '').trim().length >= 2 &&
       String(profileSyncConfig.verificationCode || '').trim().length >= 4)
 )
+const profileSyncLabel = computed(() =>
+  profileSyncConfig.enabled && hasProfileSyncRegistration.value ? '已启用呼号数据库' : '共享呼号资料库'
+)
 const profileKeyPayload = () => ({
   app: 'HAM 台网点名主控台',
   type: 'shared-profile-access-key',
@@ -1101,7 +1105,7 @@ const importProfileKey = async (event) => {
     const payload = JSON.parse(await file.text())
     applyProfileKeyPayload(payload)
     profileRegistrationOpen.value = false
-    profileSyncStatus.value = '验证密钥已导入，正在同步'
+    profileSyncStatus.value = '已启用呼号数据库'
     showNotice('验证密钥已导入')
     await syncSharedProfiles({ silent: false })
   } catch (error) {
@@ -1138,7 +1142,7 @@ const requestProfileRegistration = async () => {
     })
     const data = await response.json()
     if (!response.ok || !data?.ok) throw new Error(data?.error || '注册申请提交失败')
-    profileSyncStatus.value = data.status === 'approved' ? '已审核，请填写校验码后同步' : '已提交，等待作者审核'
+    profileSyncStatus.value = data.status === 'approved' ? '已审核，请导入验证密钥后同步' : '已提交，等待作者审核'
     showNotice(profileSyncStatus.value)
   } catch (error) {
     profileSyncStatus.value = '注册申请提交失败'
@@ -1151,7 +1155,7 @@ const requestProfileRegistration = async () => {
 const ensureProfileSyncAuthorized = () => {
   if (hasProfileSyncRegistration.value) return true
   profileSyncConfig.enabled = false
-  profileSyncStatus.value = '共享库为注册功能，需审核通过并填写校验码'
+  profileSyncStatus.value = '呼号数据库需导入验证密钥'
   authorQrTitle.value = '注册共享呼号资料库'
   authorQrHint.value = '请使用微信扫码'
   authorQrOpen.value = true
@@ -1171,7 +1175,7 @@ const pullSharedProfiles = async ({ silent = false } = {}) => {
   if (sharedProfiles.length) mergeProfiles(sharedProfiles, { preferIncoming: false })
   profileSyncConfig.lastPulledAt = new Date().toISOString()
   persistProfileSyncConfig()
-  if (!silent) showNotice(`共享库已同步 ${sharedProfiles.length} 个呼号`)
+  if (!silent) showNotice(`呼号数据库已同步 ${sharedProfiles.length} 条`)
   return data
 }
 
@@ -1210,8 +1214,8 @@ const syncSharedProfiles = async ({ silent = false } = {}) => {
     const pulled = await pullSharedProfiles({ silent: true })
     const pushedCount = pushed?.merged || 0
     const pulledCount = pulled?.count || 0
-    profileSyncStatus.value = `共享库 ${pulledCount} 个呼号${pushedCount ? `，回馈 ${pushedCount} 个` : ''}`
-    if (!silent) showNotice('共享呼号资料库已同步')
+    profileSyncStatus.value = `共享 ${pulledCount} 条，新增 ${pushedCount} 条`
+    if (!silent) showNotice('呼号数据库已同步')
   } catch (error) {
     profileSyncStatus.value = '共享库同步失败'
     if (!silent) showNotice(error?.message || '共享库同步失败')
@@ -2865,7 +2869,7 @@ onUnmounted(() => {
             <div class="entry-sync-row">
               <label class="profile-sync-control">
                 <input v-model="profileSyncConfig.enabled" type="checkbox" @change="toggleProfileSync" />
-                <span>共享呼号资料库</span>
+                <span>{{ profileSyncLabel }}</span>
               </label>
               <button
                 type="button"
@@ -3409,7 +3413,7 @@ onUnmounted(() => {
     <div v-if="aboutOpen" class="modal-backdrop" @click.self="aboutOpen = false">
       <div class="about-modal">
         <div class="modal-head">
-          <h2>关于台网点名主控台</h2>
+          <h2>关于台网点名主控台 <span class="version-badge">v{{ appVersion }}</span></h2>
           <button type="button" class="icon-button" title="关闭" @click="aboutOpen = false">X</button>
         </div>
         <p>

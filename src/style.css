@@ -1262,8 +1262,25 @@ tbody tr:nth-child(even) {
 }
 
 .about-modal h2 {
+  align-items: center;
+  display: flex;
+  gap: 8px;
   font-size: 18px;
   margin: 0;
+}
+
+.version-badge {
+  align-items: center;
+  background: #f3fbf5;
+  border: 1px solid #b8dec1;
+  border-radius: 999px;
+  color: var(--green-dark);
+  display: inline-flex;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 4px 8px;
 }
 
 .about-modal p {
