@@ -54,6 +54,10 @@ const sendJson = (res, status, payload) => {
   send(res, status, JSON.stringify(payload), jsonHeaders)
 }
 
+const faviconLinks = () => `
+    <link rel="icon" type="image/svg+xml" href="${basePath}/favicon.svg" />
+    <link rel="alternate icon" type="image/png" href="${basePath}/favicon.png" />`
+
 const profileCorsHeaders = {
   ...jsonHeaders,
   'access-control-allow-origin': '*',
@@ -698,6 +702,7 @@ function renderAdminLogin(req, res, message = '') {
     `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>台网点名主控台登录</title>
+    ${faviconLinks()}
     <style>
       body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#edf1ef;color:#18231f}
       form{width:min(420px,calc(100vw - 32px));background:#fff;border:1px solid #d5ddd8;border-radius:10px;padding:28px;box-shadow:0 18px 40px rgba(24,35,31,.08)}
@@ -1387,6 +1392,7 @@ async function monitorPage(req, res) {
     `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>台网点名主控台监控</title>
+    ${faviconLinks()}
     <style>
       body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;margin:0;background:#edf1ef;color:#18231f}
       main{max-width:1280px;margin:0 auto;padding:24px}
