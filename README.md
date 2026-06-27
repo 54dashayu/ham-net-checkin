@@ -2,6 +2,12 @@
 
 用于业余无线电台网点名活动的本地记录工具。主控可以现场记录呼号、时间、QTH、设备、天线、功率、频率、模式、信号报告和备注，并导出 Excel 可打开的表格文件。
 
+## 当前测试版
+
+V0.9.01 修复主控发射提示条停止后偶发回闪的问题，顶部增加主控天线字段，并将桌面工作台最小宽度调整到 1200px 左右，避免首行控件被过度压缩。
+
+本地 Web/VPS 包位于 `release/HAM台网点名主控台-0.9.01-web.tar.gz`，macOS Developer ID 已签名测试包位于 `release/macos-v0.9.01/HAM-Checkin-0.9.01-macOS-Universal-signed-not-notarized.dmg`。macOS 正式网页分发仍需要 Apple notarization 和 staple。
+
 ## 当前功能
 
 - 台站点名录入：自动时间、呼号标准化、重复呼号提示。

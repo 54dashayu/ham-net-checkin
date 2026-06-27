@@ -288,7 +288,11 @@ async function readSharedProfiles() {
 }
 
 async function readBaseProfiles() {
-  const candidates = [baseProfilesFile(), path.join(distDir, 'base-profiles.json')]
+  const candidates = [
+    baseProfilesFile(),
+    path.join(distDir, 'data/profiles/base-profiles.json'),
+    path.join(distDir, 'base-profiles.json')
+  ]
   for (const file of candidates) {
     try {
       const raw = await fs.readFile(file, 'utf8')
@@ -496,6 +500,7 @@ async function createExcelBuffer(activity, records) {
     controlCallsign,
     activity.controlQth,
     activity.controlDevice,
+    activity.controlAntenna,
     controlPower,
     exportTimeRange
   ]
@@ -528,7 +533,7 @@ async function createExcelBuffer(activity, records) {
     controlCallsign,
     activity.controlQth || '',
     activity.controlDevice || '',
-    '',
+    activity.controlAntenna || '',
     controlPower,
     '',
     exportTimeRange

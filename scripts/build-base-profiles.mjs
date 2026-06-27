@@ -9,6 +9,7 @@ const sources = [
   path.join(rootDir, 'references/original-windows-tool/M YSF C4FM.db3')
 ]
 const outputFile = path.join(rootDir, 'data/profiles/base-profiles.json')
+const distOutputFile = path.join(rootDir, 'dist/data/profiles/base-profiles.json')
 
 const normalizeCallsign = (value) =>
   String(value || '')
@@ -17,6 +18,7 @@ const normalizeCallsign = (value) =>
     .replace(/\s+/g, '')
 
 const normalizeText = (value) => String(value || '').trim().replace(/\s+/g, ' ')
+const isValidCallsign = (callsign) => /^[A-Z0-9/]{3,20}$/.test(callsign)
 
 const uniquePush = (target, value, limit = 24) => {
   const normalized = normalizeText(value)
@@ -35,10 +37,23 @@ const sqliteJson = (dbFile, sql) => {
 
 const profileMap = new Map()
 const sourceStats = []
+const rejectedCallsigns = new Map()
 
-const ensureProfile = (callsign) => {
+const rejectCallsign = (source, callsign) => {
+  const normalized = normalizeCallsign(callsign)
+  if (!normalized) return
+  const item = rejectedCallsigns.get(normalized) || { callsign: normalized, sources: new Set() }
+  item.sources.add(path.basename(source))
+  rejectedCallsigns.set(normalized, item)
+}
+
+const ensureProfile = (callsign, source) => {
   const normalized = normalizeCallsign(callsign)
   if (!normalized) return null
+  if (!isValidCallsign(normalized)) {
+    rejectCallsign(source, normalized)
+    return null
+  }
   if (!profileMap.has(normalized)) {
     profileMap.set(normalized, {
       callsign: normalized,
@@ -78,7 +93,7 @@ for (const source of sources) {
   )
 
   for (const row of qsoRows) {
-    const profile = ensureProfile(row.callsign)
+    const profile = ensureProfile(row.callsign, source)
     if (!profile) continue
     const signal = row.rst || row.rst1 ? `RX ${row.rst || '-'} / TX ${row.rst1 || '-'}` : ''
     uniquePush(profile.history.qth, row.qth)
@@ -95,7 +110,7 @@ for (const source of sources) {
   }
 
   for (const row of qthRows) {
-    const profile = ensureProfile(row.callsign)
+    const profile = ensureProfile(row.callsign, source)
     if (!profile) continue
     uniquePush(profile.history.qth, row.qth)
     if (!profile.qth) profile.qth = profile.history.qth[0] || ''
@@ -109,13 +124,35 @@ for (const source of sources) {
 }
 
 const profiles = [...profileMap.values()].sort((a, b) => a.callsign.localeCompare(b.callsign))
+const quality = {
+  fieldCoverage: Object.fromEntries(
+    ['qth', 'device', 'power', 'mode', 'signal'].map((key) => [
+      key,
+      profiles.filter((profile) => String(profile[key] || '').trim()).length
+    ])
+  ),
+  rejectedCallsigns: [...rejectedCallsigns.values()]
+    .map((item) => ({
+      callsign: item.callsign,
+      sources: [...item.sources].sort()
+    }))
+    .sort((a, b) => a.callsign.localeCompare(b.callsign))
+}
 const payload = {
   generatedAt: new Date().toISOString(),
   sourceStats,
+  quality,
   count: profiles.length,
   profiles
 }
 
 fs.mkdirSync(path.dirname(outputFile), { recursive: true })
 fs.writeFileSync(outputFile, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
+if (fs.existsSync(path.join(rootDir, 'dist'))) {
+  fs.mkdirSync(path.dirname(distOutputFile), { recursive: true })
+  fs.copyFileSync(outputFile, distOutputFile)
+}
 console.log(`Wrote ${profiles.length} base profiles to ${outputFile}`)
+if (quality.rejectedCallsigns.length) {
+  console.log(`Rejected ${quality.rejectedCallsigns.length} invalid callsigns`)
+}

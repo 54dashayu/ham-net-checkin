@@ -1,4 +1,5 @@
 :root {
+  --app-min-width: 1200px;
   --bg: #edf1ef;
   --panel: #f8faf8;
   --panel-strong: #ffffff;
@@ -28,7 +29,8 @@
 
 body {
   margin: 0;
-  min-width: 320px;
+  min-width: var(--app-min-width);
+  overflow-x: auto;
 }
 
 button,
@@ -48,11 +50,12 @@ button {
 
 .app-shell {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100svh;
+  min-width: var(--app-min-width);
   overflow: hidden;
-  padding: 12px;
+  padding: 10px;
 }
 
 .app-shell.has-public-bar {
@@ -105,15 +108,16 @@ button {
   border-radius: 8px;
   box-shadow: var(--shadow);
   display: grid;
-  gap: 14px;
-  grid-template-columns: 340px 92px minmax(560px, 1fr) 250px;
-  padding: 10px 12px;
+  gap: 10px;
+  grid-template-columns: 252px 76px minmax(592px, 1fr) 210px;
+  min-width: calc(var(--app-min-width) - 20px);
+  padding: 8px 10px;
 }
 
 .brand-block {
   align-items: center;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -124,8 +128,8 @@ button {
   border-radius: 8px;
   color: var(--green-dark);
   display: flex;
-  flex: 0 0 48px;
-  height: 48px;
+  flex: 0 0 44px;
+  height: 44px;
   justify-content: center;
 }
 
@@ -144,14 +148,14 @@ h2 {
 }
 
 h1 {
-  font-size: 24px;
+  font-size: 22px;
   line-height: 1.15;
 }
 
 .system-clock {
   color: var(--green);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 900;
   line-height: 1.15;
   margin: 5px 0 0;
@@ -164,8 +168,8 @@ h2 {
 
 .activity-fields {
   display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(220px, 1.35fr) repeat(4, minmax(110px, 1fr));
+  gap: 8px;
+  grid-template-columns: minmax(170px, 1.35fr) repeat(5, minmax(74px, 1fr));
 }
 
 .record-counter {
@@ -175,7 +179,7 @@ h2 {
   border-radius: 7px;
   color: inherit;
   min-height: 52px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   text-align: left;
   width: 100%;
 }
@@ -196,7 +200,7 @@ h2 {
   color: var(--green);
   display: block;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 24px;
+  font-size: 23px;
   line-height: 1.05;
 }
 
@@ -214,8 +218,8 @@ h2 {
 .activity-actions {
   align-items: end;
   display: grid;
-  gap: 7px;
-  grid-template-columns: 74px 98px 74px;
+  gap: 5px;
+  grid-template-columns: 62px 82px 58px;
 }
 
 .activity-actions .tool-button,
@@ -1404,58 +1408,5 @@ tbody tr:nth-child(even) {
 @keyframes spin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-@media (max-width: 1180px) {
-  .activity-band,
-  .workspace-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .activity-fields,
-  .activity-actions,
-  .fmo-config {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .entry-panel {
-    max-height: none;
-    position: static;
-  }
-
-  .log-panel {
-    grid-column: 1;
-  }
-}
-
-@media (max-width: 720px) {
-  .app-shell {
-    padding: 10px;
-  }
-
-  .activity-fields,
-  .activity-actions,
-  .callsign-row,
-  .field-row,
-  .field-row.compact,
-  .remark-action-row,
-  .fmo-config,
-  .inline-featured-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .fmo-topbar,
-  .toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .toolbar-actions {
-    justify-content: flex-start;
-  }
-
-  h1 {
-    font-size: 22px;
   }
 }

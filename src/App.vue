@@ -44,6 +44,7 @@ const CONTROL_TX_STALE_MS = {
   mmdvm: 1500,
   default: 1200
 }
+const CONTROL_TX_SUPPRESS_MS = 700
 const PUBLIC_WEB_LIMITS = {
   durationMs: 75 * 60 * 1000,
   resetWindowMs: 24 * 60 * 60 * 1000,
@@ -67,7 +68,7 @@ const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || get
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
-const appVersion = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : ''
+const appVersion = 'V0.9.01'
 
 const formatLocalDate = (date = new Date()) => {
   const year = date.getFullYear()
@@ -162,6 +163,7 @@ const currentRelayName = ref('当前中继/服务器')
 const controlTxInfo = ref(null)
 const controlTxClearTimer = ref(null)
 const lastTopControlCandidateKey = ref('')
+const controlTxSuppressUntil = ref({ callsign: '', time: 0 })
 const fmoRefreshing = ref(false)
 const fmoClient = ref(null)
 const fmoEventsClient = ref(null)
@@ -189,6 +191,7 @@ const activityConfig = reactive({
   controlCallsign: '',
   controlQth: '',
   controlDevice: '',
+  controlAntenna: '',
   controlPower: '',
   serialStart: 1
 })
@@ -699,7 +702,7 @@ const isPublicWebVersion = computed(
 const isLocalProfileTestMode = () =>
   window.location.protocol !== 'file:' &&
   (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
-  window.location.port === '5173'
+  !serverBasePath
 const publicElapsedMs = ref(0)
 const publicTimeRemainingText = computed(() => {
   const remaining = Math.max(0, PUBLIC_WEB_LIMITS.durationMs - publicElapsedMs.value)
@@ -968,6 +971,7 @@ const loadActivityConfig = () => {
       controlCallsign: saved.controlCallsign || '',
       controlQth: saved.controlQth || '',
       controlDevice: saved.controlDevice || '',
+      controlAntenna: saved.controlAntenna || '',
       controlPower: saved.controlPower || '',
       serialStart: normalizeSerialStart(saved.serialStart)
     })
@@ -1278,7 +1282,8 @@ const ensureProfileSyncAuthorized = () => {
 
 const pullLocalBaseProfilesForTesting = async ({ silent = false } = {}) => {
   if (!profileSyncConfig.enabled) return null
-  const response = await fetch('/data/profiles/base-profiles.json', { cache: 'no-store' })
+  const response = await fetch('./data/profiles/base-profiles.json', { cache: 'no-store' })
+  if (!response.ok) throw new Error(`本地基础库加载失败：HTTP ${response.status}`)
   const data = await response.json()
   const baseProfiles = Array.isArray(data.profiles) ? data.profiles : []
   if (baseProfiles.length) mergeProfiles(baseProfiles, { preferIncoming: false })
@@ -1415,10 +1420,26 @@ const getProfileStatsSnapshot = () => {
   }
 }
 
+const setControlTxSuppressUntil = (callsign, durationMs = CONTROL_TX_SUPPRESS_MS) => {
+  const coreCallsign = getCoreCallsign(callsign || '')
+  if (!coreCallsign) return
+  controlTxSuppressUntil.value = {
+    callsign: coreCallsign,
+    time: Date.now() + durationMs
+  }
+}
+
+const isControlTxSuppressed = (callsign) => {
+  const coreCallsign = getCoreCallsign(callsign || '')
+  const suppressed = controlTxSuppressUntil.value
+  return !!coreCallsign && suppressed.callsign === coreCallsign && Date.now() < suppressed.time
+}
+
 const stopControlTxSpeaking = (time = nowForInput()) => {
   window.clearTimeout(controlTxClearTimer.value)
   lastTopControlCandidateKey.value = ''
   if (!controlTxInfo.value) return
+  if (controlTxInfo.value.isSpeaking) setControlTxSuppressUntil(controlTxInfo.value.callsign)
   controlTxInfo.value = {
     ...controlTxInfo.value,
     isSpeaking: false,
@@ -1454,6 +1475,7 @@ const updateControlTxInfo = (candidate) => {
   const isHost = !!(candidate?.isHost || candidate?.raw?.isHost)
   const isControlCallsign = controlCallsign && isSameCoreCallsign(candidate?.callsign, controlCallsign)
   if (!candidate?.callsign || (!isHost && !isControlCallsign)) return
+  const isSpeaking = !!candidate.isSpeaking && !isControlTxSuppressed(candidate.callsign)
   window.clearTimeout(controlTxClearTimer.value)
   controlTxInfo.value = {
     callsign: candidate.callsign,
@@ -1462,7 +1484,7 @@ const updateControlTxInfo = (candidate) => {
     relayName: candidate.relayName || currentRelayName.value,
     mode: candidate.mode || '',
     qth: candidate.qth || candidate.grid || '',
-    isSpeaking: !!candidate.isSpeaking
+    isSpeaking
   }
 }
 
@@ -1490,6 +1512,7 @@ const syncControlTxFromTopCandidate = () => {
   }
 
   lastTopControlCandidateKey.value = activityKey
+  if (isSpeaking && isControlTxSuppressed(topCandidate.callsign)) isSpeaking = false
   const nextControlTx = { ...topCandidate, isSpeaking }
   updateControlTxInfo(nextControlTx)
   scheduleControlTxStaleStop(nextControlTx, activityKey)
@@ -2220,6 +2243,9 @@ const resetMonitorRuntimeState = () => {
   fmoCandidates.value = []
   fmoLogCandidates.value = []
   fmoSpeakingHistory.value = []
+  controlTxInfo.value = null
+  lastTopControlCandidateKey.value = ''
+  controlTxSuppressUntil.value = { callsign: '', time: 0 }
   currentLiveCallsign.value = ''
 }
 
@@ -2277,6 +2303,7 @@ const submitRecord = () => {
     controlCallsign: normalizeCallsign(activityConfig.controlCallsign),
     controlQth: activityConfig.controlQth,
     controlDevice: activityConfig.controlDevice,
+    controlAntenna: activityConfig.controlAntenna,
     updatedAt: new Date().toISOString()
   }
 
@@ -2473,6 +2500,7 @@ const buildExcelWorkbook = () => {
     controlCallsign,
     activityConfig.controlQth,
     activityConfig.controlDevice,
+    activityConfig.controlAntenna,
     controlPower,
     exportTimeRange
   ]
@@ -2505,7 +2533,7 @@ const buildExcelWorkbook = () => {
     controlCallsign,
     activityConfig.controlQth,
     activityConfig.controlDevice,
-    '',
+    activityConfig.controlAntenna,
     controlPower,
     '',
     exportTimeRange
@@ -2863,6 +2891,8 @@ watch(
   () => activityConfig.controlCallsign,
   () => {
     controlTxInfo.value = null
+    lastTopControlCandidateKey.value = ''
+    controlTxSuppressUntil.value = { callsign: '', time: 0 }
   }
 )
 watch(
@@ -2998,6 +3028,10 @@ onUnmounted(() => {
         <label class="field">
           <span>主控设备</span>
           <input v-model="activityConfig.controlDevice" placeholder="MMDVM / 车台 / 手台" />
+        </label>
+        <label class="field">
+          <span>主控天线</span>
+          <input v-model="activityConfig.controlAntenna" placeholder="GP / 车载 / 八木" />
         </label>
         <label class="field">
           <span>主控功率</span>
@@ -3644,7 +3678,7 @@ onUnmounted(() => {
     <div v-if="aboutOpen" class="modal-backdrop" @click.self="aboutOpen = false">
       <div class="about-modal">
         <div class="modal-head">
-          <h2>关于台网点名主控台 <span class="version-badge">v{{ appVersion }}</span></h2>
+          <h2>关于台网点名主控台 <span class="version-badge">{{ appVersion }}</span></h2>
           <button type="button" class="icon-button" title="关闭" @click="aboutOpen = false">X</button>
         </div>
         <p>
