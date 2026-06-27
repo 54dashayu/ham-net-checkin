@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "serve": "node server/index.mjs",
     "dist:mac": "npm run build && electron-builder --mac dmg --x64",
-    "dist:mac:universal": "npm run build && electron-builder --mac dmg --universal"
+    "dist:mac:universal": "npm run build && electron-builder --mac dmg --universal --publish never"
   },
   "build": {
     "appId": "net.bh1jss.ham-checkin",

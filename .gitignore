@@ -30,3 +30,6 @@ references/original-windows-tool
 
 # Generated profile library
 public/base-profiles.json
+
+# Local Apple signing materials
+build/macos-signing/
