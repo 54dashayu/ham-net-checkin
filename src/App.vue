@@ -44,7 +44,6 @@ const CONTROL_TX_STALE_MS = {
   mmdvm: 1500,
   default: 1200
 }
-const CONTROL_TX_SUPPRESS_MS = 700
 const PUBLIC_WEB_LIMITS = {
   durationMs: 75 * 60 * 1000,
   resetWindowMs: 24 * 60 * 60 * 1000,
@@ -163,7 +162,6 @@ const currentRelayName = ref('当前中继/服务器')
 const controlTxInfo = ref(null)
 const controlTxClearTimer = ref(null)
 const lastTopControlCandidateKey = ref('')
-const controlTxSuppressUntil = ref({ callsign: '', time: 0 })
 const fmoRefreshing = ref(false)
 const fmoClient = ref(null)
 const fmoEventsClient = ref(null)
@@ -1420,26 +1418,10 @@ const getProfileStatsSnapshot = () => {
   }
 }
 
-const setControlTxSuppressUntil = (callsign, durationMs = CONTROL_TX_SUPPRESS_MS) => {
-  const coreCallsign = getCoreCallsign(callsign || '')
-  if (!coreCallsign) return
-  controlTxSuppressUntil.value = {
-    callsign: coreCallsign,
-    time: Date.now() + durationMs
-  }
-}
-
-const isControlTxSuppressed = (callsign) => {
-  const coreCallsign = getCoreCallsign(callsign || '')
-  const suppressed = controlTxSuppressUntil.value
-  return !!coreCallsign && suppressed.callsign === coreCallsign && Date.now() < suppressed.time
-}
-
 const stopControlTxSpeaking = (time = nowForInput()) => {
   window.clearTimeout(controlTxClearTimer.value)
   lastTopControlCandidateKey.value = ''
   if (!controlTxInfo.value) return
-  if (controlTxInfo.value.isSpeaking) setControlTxSuppressUntil(controlTxInfo.value.callsign)
   controlTxInfo.value = {
     ...controlTxInfo.value,
     isSpeaking: false,
@@ -1475,7 +1457,6 @@ const updateControlTxInfo = (candidate) => {
   const isHost = !!(candidate?.isHost || candidate?.raw?.isHost)
   const isControlCallsign = controlCallsign && isSameCoreCallsign(candidate?.callsign, controlCallsign)
   if (!candidate?.callsign || (!isHost && !isControlCallsign)) return
-  const isSpeaking = !!candidate.isSpeaking && !isControlTxSuppressed(candidate.callsign)
   window.clearTimeout(controlTxClearTimer.value)
   controlTxInfo.value = {
     callsign: candidate.callsign,
@@ -1484,7 +1465,7 @@ const updateControlTxInfo = (candidate) => {
     relayName: candidate.relayName || currentRelayName.value,
     mode: candidate.mode || '',
     qth: candidate.qth || candidate.grid || '',
-    isSpeaking
+    isSpeaking: !!candidate.isSpeaking
   }
 }
 
@@ -1512,7 +1493,6 @@ const syncControlTxFromTopCandidate = () => {
   }
 
   lastTopControlCandidateKey.value = activityKey
-  if (isSpeaking && isControlTxSuppressed(topCandidate.callsign)) isSpeaking = false
   const nextControlTx = { ...topCandidate, isSpeaking }
   updateControlTxInfo(nextControlTx)
   scheduleControlTxStaleStop(nextControlTx, activityKey)
@@ -2245,7 +2225,6 @@ const resetMonitorRuntimeState = () => {
   fmoSpeakingHistory.value = []
   controlTxInfo.value = null
   lastTopControlCandidateKey.value = ''
-  controlTxSuppressUntil.value = { callsign: '', time: 0 }
   currentLiveCallsign.value = ''
 }
 
@@ -2892,7 +2871,6 @@ watch(
   () => {
     controlTxInfo.value = null
     lastTopControlCandidateKey.value = ''
-    controlTxSuppressUntil.value = { callsign: '', time: 0 }
   }
 )
 watch(
