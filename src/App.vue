@@ -967,16 +967,29 @@ const applyProfile = (profile, overwrite = false) => {
 }
 
 const chooseFmoCandidate = (candidate) => {
-  form.prefix = ''
-  form.callsign = candidate.callsign
-  applyProfile(profileByCallsign.value.get(candidate.callsign), false)
-  if (candidate.qth && !form.qth) form.qth = candidate.qth
-  if (candidate.device && !form.device) form.device = candidate.device
-  if (candidate.power && !form.power) form.power = candidate.power
+  if (!candidate?.callsign) return
+  const { prefix, callsign } = splitRecordCallsign(candidate.callsign)
+  form.prefix = prefix
+  form.callsign = callsign
+  form.qth = ''
+  form.device = ''
+  form.antenna = ''
+  form.power = ''
+  form.mode = 'FM'
+  form.signal = '59'
+  form.remarks = ''
+
+  applyProfile(currentProfile.value, true)
+  if (candidate.qth) form.qth = candidate.qth
+  if (candidate.device) form.device = candidate.device
+  if (candidate.antenna) form.antenna = candidate.antenna
+  if (candidate.power) form.power = candidate.power
   if (candidate.mode) form.mode = candidate.mode
-  if (!form.signal) form.signal = '59'
+  if (candidate.signal) form.signal = candidate.signal
   const relayText = candidate.relayName ? `中继 ${candidate.relayName}` : ''
-  form.remarks = [form.remarks, candidate.sourceLabel, relayText, candidate.comment]
+  const firstTimeRemark =
+    !profileParticipationCount.value && !currentProfile.value ? FIRST_TIME_REMARK : ''
+  form.remarks = [firstTimeRemark, candidate.sourceLabel, relayText, candidate.comment]
     .filter(Boolean)
     .join(' / ')
   showNotice(`已选取 ${candidate.callsign}`)
@@ -1951,7 +1964,13 @@ const connectFmoEvents = async (host) => {
 }
 
 const connectFmoApi = async (host) => {
-  if (fmoClient.value?.socket?.readyState === WebSocket.OPEN) return fmoClient.value
+  const isSameTarget =
+    fmoClient.value?.host === host && fmoClient.value?.protocol === fmoConfig.protocol
+  if (isSameTarget && fmoClient.value?.socket?.readyState === WebSocket.OPEN) return fmoClient.value
+  if (fmoClient.value && !isSameTarget) {
+    fmoClient.value.close()
+    fmoClient.value = null
+  }
 
   const apiClient = new FmoClient({ host, protocol: fmoConfig.protocol })
   await apiClient.connect()
@@ -2176,15 +2195,21 @@ const startFmoAutoRefresh = () => {
   fmoRefreshTimer.value = window.setInterval(refreshMonitorCandidates, refreshMs)
 }
 
-const restartMonitor = () => {
+const resetMonitorRuntimeState = () => {
+  window.clearInterval(fmoRefreshTimer.value)
+  closeFmoClient()
+  fmoRefreshing.value = false
+  fmoCandidates.value = []
+  fmoLogCandidates.value = []
+  fmoSpeakingHistory.value = []
+  currentLiveCallsign.value = ''
+}
+
+const restartMonitor = ({ immediate = false } = {}) => {
   nextMonitorRequestId()
   window.clearTimeout(monitorRestartTimer.value)
-  monitorRestartTimer.value = window.setTimeout(() => {
-    closeFmoClient()
-    fmoCandidates.value = []
-    fmoLogCandidates.value = []
-    fmoSpeakingHistory.value = []
-    currentLiveCallsign.value = ''
+  const run = () => {
+    resetMonitorRuntimeState()
     currentRelayName.value =
       fmoConfig.source === 'mmdvm'
         ? 'MMDVM Last Heard'
@@ -2196,7 +2221,12 @@ const restartMonitor = () => {
             ? currentMonitorSource.value.label
             : '当前中继/服务器'
     startFmoAutoRefresh()
-  }, 150)
+  }
+  if (immediate) {
+    run()
+    return
+  }
+  monitorRestartTimer.value = window.setTimeout(run, 150)
 }
 
 const changeMonitorSource = (event) => {
@@ -2207,6 +2237,8 @@ const changeMonitorSource = (event) => {
   if (hasStarted) {
     showNotice('点名活动进行中已切换监听源，当前候选将重新连接获取', 'top')
   }
+  nextMonitorRequestId()
+  resetMonitorRuntimeState()
   fmoConfig.source = nextSource
   previousMonitorSource.value = nextSource
 }
@@ -2814,14 +2846,14 @@ watch(
     fmoConfig.autoRefresh,
     fmoConfig.fromCallsign
   ],
-  ([source]) => {
+  ([source], [previousSource] = []) => {
     if ((source === 'mmdvm' || source === 'hambox' || source === 'bm') && !fmoConfig.autoRefresh) {
       fmoConfig.autoRefresh = true
       return
     }
     window.clearInterval(fmoRefreshTimer.value)
     closeFmoClient()
-    restartMonitor()
+    restartMonitor({ immediate: Boolean(previousSource && source !== previousSource) })
   }
 )
 watch(
