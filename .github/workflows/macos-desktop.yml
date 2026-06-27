@@ -1,0 +1,120 @@
+name: Build macOS Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      require_notarization:
+        description: Require Apple Developer ID signing and notarization secrets
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+  push:
+    tags:
+      - 'desktop-v*'
+
+jobs:
+  build-macos:
+    name: Build universal macOS DMG
+    runs-on: macos-latest
+    env:
+      HAS_APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare Apple signing certificate
+        if: ${{ env.HAS_APPLE_SIGNING == 'true' }}
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cert_path="$RUNNER_TEMP/developer-id-application.p12"
+          keychain_path="$RUNNER_TEMP/app-signing.keychain-db"
+          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 -D > "$cert_path"
+          security create-keychain -p "$APPLE_CERTIFICATE_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$APPLE_CERTIFICATE_PASSWORD" "$keychain_path"
+          security import "$cert_path" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" $(security list-keychains -d user | sed 's/[",]//g')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$APPLE_CERTIFICATE_PASSWORD" "$keychain_path"
+          security find-identity -v -p codesigning "$keychain_path"
+
+      - name: Build notarized universal DMG
+        if: ${{ env.HAS_APPLE_SIGNING == 'true' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dist:mac:universal
+
+      - name: Build unsigned universal DMG
+        if: ${{ env.HAS_APPLE_SIGNING != 'true' && github.event_name == 'workflow_dispatch' && inputs.require_notarization == 'false' }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        shell: bash
+        run: npm run dist:mac:universal
+
+      - name: Fail when notarization is required but unavailable
+        if: ${{ env.HAS_APPLE_SIGNING != 'true' && (github.event_name != 'workflow_dispatch' || inputs.require_notarization == 'true') }}
+        shell: bash
+        run: |
+          echo "Apple Developer ID signing/notarization secrets are not configured." >&2
+          echo "Required repository secrets:" >&2
+          echo "  APPLE_ID" >&2
+          echo "  APPLE_APP_SPECIFIC_PASSWORD" >&2
+          echo "  APPLE_TEAM_ID" >&2
+          echo "  APPLE_CERTIFICATE_P12_BASE64" >&2
+          echo "  APPLE_CERTIFICATE_PASSWORD" >&2
+          exit 1
+
+      - name: Stage macOS artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          mkdir -p release/macos
+          find release -maxdepth 1 -name '*.dmg' -type f -print -exec cp {} release/macos/ \;
+          for dmg in release/macos/*.dmg; do
+            mv "$dmg" "release/macos/HAM-Checkin-${version}-macOS-Universal.dmg"
+            break
+          done
+          shasum -a 256 release/macos/* > "release/macos/SHA256SUMS-macOS-${version}.txt"
+          ls -lh release/macos
+
+      - name: Verify notarized app
+        if: ${{ env.HAS_APPLE_SIGNING == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="$(find release/macos -name '*.dmg' -type f -print -quit)"
+          mnt="$(mktemp -d)"
+          hdiutil attach "$dmg" -mountpoint "$mnt" -nobrowse -quiet
+          app="$(find "$mnt" -maxdepth 2 -name '*.app' -type d -print -quit)"
+          xcrun stapler validate "$app"
+          spctl -a -vvv -t exec "$app"
+          hdiutil detach "$mnt" -quiet
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ham-checkin-macos
+          path: release/macos/*
