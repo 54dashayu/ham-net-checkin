@@ -106,7 +106,7 @@ button {
   box-shadow: var(--shadow);
   display: grid;
   gap: 14px;
-  grid-template-columns: 250px minmax(560px, 1fr) 250px 118px;
+  grid-template-columns: 340px 92px minmax(560px, 1fr) 250px;
   padding: 10px 12px;
 }
 
@@ -148,6 +148,16 @@ h1 {
   line-height: 1.15;
 }
 
+.system-clock {
+  color: var(--green);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.15;
+  margin: 5px 0 0;
+  white-space: nowrap;
+}
+
 h2 {
   font-size: 17px;
 }
@@ -159,10 +169,20 @@ h2 {
 }
 
 .record-counter {
+  appearance: none;
   background: #eff7f1;
   border: 1px solid #c9ddcf;
   border-radius: 7px;
-  padding: 9px 10px;
+  color: inherit;
+  min-height: 52px;
+  padding: 6px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.record-counter:hover {
+  border-color: #93c5a0;
+  box-shadow: inset 0 0 0 1px rgba(0, 140, 42, 0.12);
 }
 
 .record-counter span {
@@ -176,8 +196,19 @@ h2 {
   color: var(--green);
   display: block;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1.05;
+}
+
+.record-counter em {
+  color: var(--muted);
+  display: block;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-top: 2px;
+  white-space: nowrap;
 }
 
 .activity-actions {
@@ -647,6 +678,37 @@ h2 {
   width: min(720px, 100%);
 }
 
+.serial-modal {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(20, 34, 28, 0.22);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  pointer-events: auto;
+  width: min(360px, 100%);
+}
+
+.serial-modal .modal-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.serial-modal input {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.serial-modal-actions {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 90px minmax(0, 1fr);
+}
+
 .profile-registration-modal .modal-head {
   align-items: center;
   display: flex;
@@ -986,6 +1048,11 @@ tbody tr:nth-child(even) {
   width: 32px;
 }
 
+.log-table th:last-child,
+.log-table td:last-child {
+  text-align: center;
+}
+
 .serial-col {
   width: 42px;
 }
@@ -1145,15 +1212,16 @@ tbody tr:nth-child(even) {
 }
 
 .profile-register-button {
-  background: #ecf8ef;
-  border-color: #47b866;
-  color: var(--green-dark);
+  background: #fff1c2;
+  border-color: #e8590c;
+  box-shadow: 0 0 0 2px rgba(232, 89, 12, 0.13);
+  color: #b45f00;
   font-weight: 900;
 }
 
 .profile-register-button:hover {
-  background: #dff4e4;
-  border-color: var(--green);
+  background: #ffe3a1;
+  border-color: #d9480f;
 }
 
 .profile-sync-status {
@@ -1211,6 +1279,18 @@ tbody tr:nth-child(even) {
   justify-content: flex-end;
   pointer-events: none;
   z-index: 40;
+}
+
+.compact-modal > * {
+  pointer-events: auto;
+}
+
+.serial-editor-backdrop {
+  align-items: flex-start;
+  background: transparent;
+  justify-content: flex-start;
+  padding: 96px 18px 18px 18px;
+  z-index: 42;
 }
 
 .author-qr-modal {

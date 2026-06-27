@@ -76,6 +76,13 @@ const formatLocalDate = (date = new Date()) => {
   return `${year}-${month}-${day}`
 }
 
+const formatSystemClock = (date = new Date()) => {
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+  return `${formatLocalDate(date)} ${hours}:${minutes}:${seconds}`
+}
+
 const getDefaultActivityName = () => `台网活动 ${formatLocalDate()}`
 
 const nowForInput = () => {
@@ -115,6 +122,10 @@ const serverSaveAvailable = ref(false)
 const authorQrOpen = ref(false)
 const aboutOpen = ref(false)
 const profileRegistrationOpen = ref(false)
+const systemClock = ref(new Date())
+const systemClockTimer = ref(null)
+const serialEditorOpen = ref(false)
+const serialEditorDraft = ref('')
 const publicSession = reactive({
   startedAt: Date.now(),
   activityId: initialActivityId || 'default',
@@ -178,7 +189,8 @@ const activityConfig = reactive({
   controlCallsign: '',
   controlQth: '',
   controlDevice: '',
-  controlPower: ''
+  controlPower: '',
+  serialStart: 1
 })
 
 const modeOptions = ['FM', 'SSB', 'CW', 'DMR', 'C4FM', 'D-STAR', 'FT8']
@@ -521,9 +533,14 @@ const profileParticipationCount = computed(() => {
   return Math.max(Number(currentProfile.value?.checkinCount || 0), currentSessionCount)
 })
 
+const normalizeSerialStart = (value) => Math.max(1, Number.parseInt(value, 10) || 1)
+const recordSerialStart = computed(() => normalizeSerialStart(activityConfig.serialStart))
+const nextRecordSerial = computed(() => recordSerialStart.value + sortedRecords.value.length)
+const displayedRecordedCount = computed(() => Math.max(0, nextRecordSerial.value - 1))
+
 const getDisplaySerial = (record) => {
   const index = sortedRecords.value.findIndex((item) => item.id === record.id)
-  return index >= 0 ? index + 1 : ''
+  return index >= 0 ? recordSerialStart.value + index : ''
 }
 
 const profileFields = ['qth', 'device', 'antenna', 'power', 'mode', 'signal']
@@ -951,7 +968,8 @@ const loadActivityConfig = () => {
       controlCallsign: saved.controlCallsign || '',
       controlQth: saved.controlQth || '',
       controlDevice: saved.controlDevice || '',
-      controlPower: saved.controlPower || ''
+      controlPower: saved.controlPower || '',
+      serialStart: normalizeSerialStart(saved.serialStart)
     })
   } catch {
     /* keep defaults */
@@ -2384,9 +2402,29 @@ const clearAll = () => {
   showNotice('已清空记录')
 }
 
+const openSerialEditor = () => {
+  serialEditorDraft.value = String(displayedRecordedCount.value)
+  serialEditorOpen.value = true
+}
+
+const closeSerialEditor = () => {
+  serialEditorOpen.value = false
+}
+
+const applySerialEditor = () => {
+  const recordedCount = Number.parseInt(String(serialEditorDraft.value).trim(), 10)
+  if (!Number.isInteger(recordedCount) || recordedCount < 0) {
+    showNotice('已记录数量需要填写 0 或正整数')
+    return
+  }
+  activityConfig.serialStart = Math.max(1, recordedCount - sortedRecords.value.length + 1)
+  closeSerialEditor()
+  showNotice(`下一条记录序号将从 ${nextRecordSerial.value} 开始`)
+}
+
 const makeRows = () =>
   sortedRecords.value.map((record, index) => ({
-    序号: index + 1,
+    序号: recordSerialStart.value + index,
     呼号: record.callsign,
     QTH: record.qth,
     设备: record.device,
@@ -2685,7 +2723,8 @@ const createNewActivity = () => {
   resetForm()
   Object.assign(activityConfig, {
     ...activityConfig,
-    name: getDefaultActivityName()
+    name: getDefaultActivityName(),
+    serialStart: 1
   })
   persist()
   persistActivityConfig()
@@ -2895,6 +2934,9 @@ onMounted(() => {
   profileSyncTimer.value = window.setInterval(() => {
     if (profileSyncConfig.enabled) syncSharedProfiles({ silent: true })
   }, 10 * 60 * 1000)
+  systemClockTimer.value = window.setInterval(() => {
+    systemClock.value = new Date()
+  }, 1000)
   startFmoAutoRefresh()
 })
 
@@ -2906,6 +2948,7 @@ onUnmounted(() => {
   window.clearTimeout(controlTxClearTimer.value)
   window.clearTimeout(autoSaveTimer.value)
   window.clearTimeout(profileSyncDebounceTimer.value)
+  window.clearInterval(systemClockTimer.value)
   closeFmoClient()
 })
 </script>
@@ -2924,8 +2967,20 @@ onUnmounted(() => {
         <div>
           <p class="eyebrow">HAM Net Check-in</p>
           <h1>台网点名主控台</h1>
+          <p class="system-clock">{{ formatSystemClock(systemClock) }}</p>
         </div>
       </div>
+
+      <button
+        type="button"
+        class="record-counter"
+        title="点击设置已记录数量，下一条序号自动 +1"
+        @click="openSerialEditor"
+      >
+        <span>已记录</span>
+        <strong>{{ displayedRecordedCount }}</strong>
+        <em>下条 {{ nextRecordSerial }}</em>
+      </button>
 
       <div class="activity-fields">
         <label class="field">
@@ -2969,11 +3024,6 @@ onUnmounted(() => {
           <FilePlus2 :size="18" />
           <span>新建</span>
         </button>
-      </div>
-
-      <div class="record-counter">
-        <span>已记录</span>
-        <strong>{{ stats.total }}</strong>
       </div>
     </section>
 
@@ -3258,7 +3308,6 @@ onUnmounted(() => {
           <div class="table-wrap log-table-wrap">
             <table class="log-table">
               <colgroup>
-                <col class="select-col" />
                 <col class="serial-col" />
                 <col class="callsign-col" />
                 <col class="time-col" />
@@ -3267,10 +3316,10 @@ onUnmounted(() => {
                 <col class="antenna-col" />
                 <col class="power-col" />
                 <col class="mode-col" />
+                <col class="select-col" />
               </colgroup>
               <thead>
                 <tr>
-                  <th>选</th>
                   <th>序号</th>
                   <th>呼号</th>
                   <th>时间</th>
@@ -3279,6 +3328,7 @@ onUnmounted(() => {
                   <th>天线</th>
                   <th>功率</th>
                   <th>模式</th>
+                  <th>选</th>
                 </tr>
               </thead>
               <tbody>
@@ -3289,14 +3339,6 @@ onUnmounted(() => {
                   title="点击修改记录"
                   @click="openRecordEditor(record)"
                 >
-                  <td>
-                    <input
-                      v-model="selectedRecordIds"
-                      type="checkbox"
-                      :value="record.id"
-                      @click.stop
-                    />
-                  </td>
                   <td>{{ getDisplaySerial(record) }}</td>
                   <td><strong class="callsign">{{ record.callsign }}</strong></td>
                   <td>{{ formatClock(record.time) }}</td>
@@ -3305,9 +3347,17 @@ onUnmounted(() => {
                   <td>{{ record.antenna || '-' }}</td>
                   <td>{{ record.power || '-' }}</td>
                   <td :title="record.mode || '-'">{{ record.mode || '-' }}</td>
+                  <td>
+                    <input
+                      v-model="selectedRecordIds"
+                      type="checkbox"
+                      :value="record.id"
+                      @click.stop
+                    />
+                  </td>
                 </tr>
                 <tr v-if="!filteredRecords.length">
-                  <td colspan="9" class="empty-state">暂无记录</td>
+                  <td colspan="10" class="empty-state">暂无记录</td>
                 </tr>
               </tbody>
             </table>
@@ -3497,6 +3547,31 @@ onUnmounted(() => {
         </div>
       </section>
     </section>
+
+    <div v-if="serialEditorOpen" class="modal-backdrop serial-editor-backdrop" @click.self="closeSerialEditor">
+      <form class="serial-modal" @submit.prevent="applySerialEditor">
+        <div class="modal-head">
+          <h2>设置已记录数量</h2>
+          <button type="button" class="icon-button" title="关闭" @click="closeSerialEditor">X</button>
+        </div>
+        <label class="field">
+          <span>已记录数量</span>
+          <input
+            v-model="serialEditorDraft"
+            type="number"
+            min="0"
+            step="1"
+            inputmode="numeric"
+            autofocus
+          />
+        </label>
+        <p class="modal-hint">保存后，下一条记录序号自动从已记录数量 +1 开始。</p>
+        <div class="serial-modal-actions">
+          <button type="button" class="tool-button" @click="closeSerialEditor">取消</button>
+          <button type="submit" class="primary-action">保存设置</button>
+        </div>
+      </form>
+    </div>
 
     <div v-if="authorQrOpen" class="modal-backdrop compact-modal" @click.self="authorQrOpen = false">
       <div class="author-qr-modal">
