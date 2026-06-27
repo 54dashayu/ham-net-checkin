@@ -4,9 +4,9 @@
 
 ## 当前测试版
 
-V0.9.01 修复主控发射提示条停止后偶发回闪的问题，顶部增加主控天线字段，并将桌面工作台最小宽度调整到 1200px 左右，避免首行控件被过度压缩。
+V0.9.01 顶部增加主控天线字段，并将桌面工作台最小宽度调整到 1200px 左右，避免首行控件被过度压缩。主控发射提示逻辑已回溯到 V0.9 原机制。
 
-本地 Web/VPS 包位于 `release/HAM台网点名主控台-0.9.01-web.tar.gz`，macOS Developer ID 已签名测试包位于 `release/macos-v0.9.01/HAM-Checkin-0.9.01-macOS-Universal-signed-not-notarized.dmg`。macOS 正式网页分发仍需要 Apple notarization 和 staple。
+本地 Web/VPS 包位于 `release/HAM台网点名主控台-0.9.01-web.tar.gz`，Win64 公网分发包位于 `release/actions-win64-v0.9.01-rollback/HAM-Checkin-0.9.01-Win64.zip`，macOS Developer ID 公证版位于 `release/macos-v0.9.01/HAM-Checkin-0.9.01-macOS-Universal-notarized.dmg`。
 
 ## 当前功能
 
