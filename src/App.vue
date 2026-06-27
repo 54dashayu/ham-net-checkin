@@ -90,6 +90,7 @@ const emptyForm = () => ({
   time: nowForInput(),
   qth: '',
   device: '',
+  antenna: '',
   power: '',
   mode: 'FM',
   signal: '59',
@@ -182,6 +183,7 @@ const activityConfig = reactive({
 
 const modeOptions = ['FM', 'SSB', 'CW', 'DMR', 'C4FM', 'D-STAR', 'FT8']
 const quickPowerOptions = ['5W', '10W', '25W', '50W']
+const FIRST_TIME_REMARK = '首次参与'
 const monitorSourceOptions = [
   {
     value: 'fmo',
@@ -480,11 +482,28 @@ const profileByCallsign = computed(() => {
   return map
 })
 
-const currentProfile = computed(
-  () =>
-    profileByCallsign.value.get(buildRecordCallsign()) ||
-    profileByCallsign.value.get(normalizeCallsign(form.callsign))
-)
+const currentProfile = computed(() => {
+  const exactCallsign = buildRecordCallsign()
+  const plainCallsign = normalizeCallsign(form.callsign)
+  const coreCallsign = getCoreCallsign(exactCallsign || plainCallsign)
+  const exactProfile =
+    profileByCallsign.value.get(exactCallsign) ||
+    profileByCallsign.value.get(plainCallsign)
+  if (!coreCallsign) return exactProfile || null
+
+  const matchingProfiles = [...profileByCallsign.value.values()].filter((profile) =>
+    isSameCoreCallsign(profile.callsign, coreCallsign)
+  )
+  const orderedProfiles = [
+    exactProfile,
+    ...matchingProfiles.filter((profile) => profile.callsign !== exactProfile?.callsign)
+  ].filter(Boolean)
+  const mergedProfile = orderedProfiles.reduce(
+    (merged, profile) => mergeProfileEntry(merged, profile, { preferIncoming: !merged }),
+    null
+  )
+  return mergedProfile ? { ...mergedProfile, callsign: exactCallsign || plainCallsign || coreCallsign } : null
+})
 
 const previousCheckinCount = computed(() => {
   const callsign = buildRecordCallsign()
@@ -492,22 +511,38 @@ const previousCheckinCount = computed(() => {
   return records.value.filter((record) => record.callsign === callsign && record.id !== editingId.value).length
 })
 
+const profileParticipationCount = computed(() => {
+  const callsign = buildRecordCallsign()
+  const coreCallsign = getCoreCallsign(callsign)
+  if (!coreCallsign) return 0
+  const currentSessionCount = records.value.filter((record) =>
+    isSameCoreCallsign(record.callsign, coreCallsign)
+  ).length
+  return Math.max(Number(currentProfile.value?.checkinCount || 0), currentSessionCount)
+})
+
 const getDisplaySerial = (record) => {
   const index = sortedRecords.value.findIndex((item) => item.id === record.id)
   return index >= 0 ? index + 1 : ''
 }
 
-const profileFields = ['qth', 'device', 'power', 'mode', 'signal']
+const profileFields = ['qth', 'device', 'antenna', 'power', 'mode', 'signal']
 
-const uniqueRecentValues = (values, limit = 12) =>
-  [
-    ...new Set(
-      values
-        .filter(Boolean)
-        .map((value) => String(value).trim())
-        .filter(Boolean)
-    )
-  ].slice(0, limit)
+const uniqueRecentValues = (values, limit = 12) => {
+  const seen = new Set()
+  const result = []
+  values
+    .filter(Boolean)
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .forEach((value) => {
+      const key = toHalfWidth(value).toLowerCase().replace(/\s+/g, '')
+      if (seen.has(key)) return
+      seen.add(key)
+      result.push(value)
+    })
+  return result.slice(0, limit)
+}
 
 const profileHistoryValues = (profile, key, limit = 12) => {
   const history = profile?.history?.[key]
@@ -535,12 +570,37 @@ const filterValuesByInput = (values, keyword, limit = 24) => {
   return filtered.slice(0, limit)
 }
 
+const collectKnownCallsigns = () =>
+  [
+    ...records.value.map((record) => record.callsign),
+    ...profiles.value.map((profile) => profile.callsign)
+  ]
+    .map(normalizeCallsign)
+    .map(getCoreCallsign)
+    .filter(Boolean)
+
+const callsignSuggestions = computed(() => {
+  const keyword = toHalfWidth(form.callsign).toUpperCase().replace(/\s+/g, '')
+  const uniqueCallsigns = uniqueRecentValues(collectKnownCallsigns(), collectKnownCallsigns().length || 400)
+  if (!keyword) return uniqueCallsigns.slice(0, 24)
+  return uniqueCallsigns
+    .filter((callsign) => callsign.includes(keyword))
+    .sort((a, b) => {
+      const aStarts = a.startsWith(keyword)
+      const bStarts = b.startsWith(keyword)
+      if (aStarts !== bStarts) return aStarts ? -1 : 1
+      return a.localeCompare(b)
+    })
+    .slice(0, 24)
+})
+
 const knownValues = computed(() => {
   const valuesFor = (key) => uniqueRecentValues(collectKnownValues(key), 80).reverse()
 
   return {
     qth: valuesFor('qth'),
     device: valuesFor('device'),
+    antenna: valuesFor('antenna'),
     mode: valuesFor('mode'),
     power: valuesFor('power'),
     signal: valuesFor('signal')
@@ -552,7 +612,7 @@ const currentKnownValues = computed(() => {
   return Object.fromEntries(
     profileFields.map((key) => {
       const profileValues = profileHistoryValues(profile, key, 16)
-      return [key, profileValues.length ? profileValues : knownValues.value[key]]
+      return [key, profileValues]
     })
   )
 })
@@ -561,14 +621,27 @@ const getSearchableKnownValues = (key, target = form) => {
   const currentValues = currentKnownValues.value[key] || []
   const globalValues = collectKnownValues(key)
   const keyword = target[key]
+  const hasKeyword = Boolean(toHalfWidth(keyword).trim())
   const currentMatches = filterValuesByInput(currentValues, keyword, 24)
   const globalMatches = filterValuesByInput(globalValues, keyword, 120)
-  return uniqueRecentValues([...currentMatches, ...globalMatches], 24)
+  if (buildRecordCallsign() && !hasKeyword) return currentMatches
+  if (buildRecordCallsign()) return uniqueRecentValues([...currentMatches, ...globalMatches], 24)
+  return globalMatches.slice(0, 24)
 }
 
 const searchableKnownValues = computed(() =>
   Object.fromEntries(profileFields.map((key) => [key, getSearchableKnownValues(key, form)]))
 )
+
+const recordStatusText = computed(() => {
+  if (duplicateCallsign.value && profileParticipationCount.value) {
+    return `本次已记录 · 历史 x${profileParticipationCount.value}`
+  }
+  if (duplicateCallsign.value) return '本次已记录'
+  if (profileParticipationCount.value) return `历史 x${profileParticipationCount.value}`
+  if (form.callsign && !currentProfile.value) return '首次参与'
+  return ''
+})
 
 const rankedFmoCandidates = computed(() =>
   [...fmoCandidates.value].sort((a, b) => {
@@ -606,6 +679,10 @@ const isLocalWebOrigin = () => {
 const isPublicWebVersion = computed(
   () => window.location.protocol !== 'file:' && !isLocalWebOrigin() && serverBasePath === '/checkin'
 )
+const isLocalProfileTestMode = () =>
+  window.location.protocol !== 'file:' &&
+  (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
+  window.location.port === '5173'
 const publicElapsedMs = ref(0)
 const publicTimeRemainingText = computed(() => {
   const remaining = Math.max(0, PUBLIC_WEB_LIMITS.durationMs - publicElapsedMs.value)
@@ -623,9 +700,7 @@ const hasProfileSyncRegistration = computed(
       String(profileSyncConfig.registrationRepeater || '').trim().length >= 2 &&
       String(profileSyncConfig.verificationCode || '').trim().length >= 4)
 )
-const profileSyncLabel = computed(() =>
-  profileSyncConfig.enabled && hasProfileSyncRegistration.value ? '已启用呼号数据库' : '共享呼号资料库'
-)
+const profileSyncLabel = computed(() => (profileSyncConfig.enabled ? '已启用呼号数据库' : '启用呼号数据库'))
 const profileKeyPayload = () => ({
   app: 'HAM 台网点名主控台',
   type: 'shared-profile-access-key',
@@ -885,7 +960,7 @@ const loadActivityConfig = () => {
 
 const applyProfile = (profile, overwrite = false) => {
   if (!profile) return
-  const fields = ['qth', 'device', 'power', 'mode', 'signal']
+  const fields = ['qth', 'device', 'antenna', 'power', 'mode', 'signal']
   fields.forEach((key) => {
     if (overwrite || !form[key]) form[key] = profile[key] || form[key]
   })
@@ -922,10 +997,12 @@ const normalizeProfile = (profile) => {
     callsign,
     qth: profile?.qth || history.qth[0] || '',
     device: profile?.device || history.device[0] || '',
+    antenna: profile?.antenna || history.antenna[0] || '',
     power: profile?.power || history.power[0] || '',
     mode: profile?.mode || history.mode[0] || '',
     signal: profile?.signal || history.signal[0] || '',
     remarks: profile?.remarks || '',
+    checkinCount: Number(profile?.checkinCount || profile?.count || 0),
     lastCheckinAt: profile?.lastCheckinAt || profile?.time || '',
     updatedAt: profile?.updatedAt || new Date().toISOString(),
     history
@@ -945,15 +1022,18 @@ const mergeProfileEntry = (baseProfile, entry, { preferIncoming = true } = {}) =
       24
     )
   })
+  const shouldCountCheckin = Boolean(entry?.time || entry?.lastCheckinAt) && !entry?.history
   return {
     ...base,
     callsign,
     qth: preferIncoming ? entry?.qth || base.qth || history.qth[0] || '' : base.qth || entry?.qth || history.qth[0] || '',
     device: preferIncoming ? entry?.device || base.device || history.device[0] || '' : base.device || entry?.device || history.device[0] || '',
+    antenna: preferIncoming ? entry?.antenna || base.antenna || history.antenna[0] || '' : base.antenna || entry?.antenna || history.antenna[0] || '',
     power: preferIncoming ? entry?.power || base.power || history.power[0] || '' : base.power || entry?.power || history.power[0] || '',
     mode: preferIncoming ? entry?.mode || base.mode || history.mode[0] || '' : base.mode || entry?.mode || history.mode[0] || '',
     signal: preferIncoming ? entry?.signal || base.signal || history.signal[0] || '' : base.signal || entry?.signal || history.signal[0] || '',
     remarks: preferIncoming ? entry?.remarks || base.remarks || '' : base.remarks || entry?.remarks || '',
+    checkinCount: Math.max(Number(base.checkinCount || 0), Number(entry?.checkinCount || 0)) + (shouldCountCheckin ? 1 : 0),
     lastCheckinAt: preferIncoming
       ? entry?.lastCheckinAt || entry?.time || base.lastCheckinAt || ''
       : base.lastCheckinAt || entry?.lastCheckinAt || entry?.time || '',
@@ -1018,9 +1098,11 @@ const sharedProfilePayload = (profile) => {
     callsign: normalized.callsign,
     qth: history.qth[0] || '',
     device: history.device[0] || '',
+    antenna: history.antenna[0] || '',
     power: history.power[0] || '',
     mode: history.mode[0] || '',
     signal: history.signal[0] || '',
+    checkinCount: Number(normalized.checkinCount || 0),
     lastCheckinAt: normalized.lastCheckinAt || '',
     updatedAt: normalized.updatedAt || new Date().toISOString(),
     history
@@ -1153,6 +1235,7 @@ const requestProfileRegistration = async () => {
 }
 
 const ensureProfileSyncAuthorized = () => {
+  if (isLocalProfileTestMode()) return true
   if (hasProfileSyncRegistration.value) return true
   profileSyncConfig.enabled = false
   profileSyncStatus.value = '呼号数据库需导入验证密钥'
@@ -1162,8 +1245,28 @@ const ensureProfileSyncAuthorized = () => {
   return false
 }
 
+const pullLocalBaseProfilesForTesting = async ({ silent = false } = {}) => {
+  if (!profileSyncConfig.enabled) return null
+  const response = await fetch('/data/profiles/base-profiles.json', { cache: 'no-store' })
+  const data = await response.json()
+  const baseProfiles = Array.isArray(data.profiles) ? data.profiles : []
+  if (baseProfiles.length) mergeProfiles(baseProfiles, { preferIncoming: false })
+  profileSyncConfig.lastPulledAt = new Date().toISOString()
+  profileSyncStatus.value = `本地测试基础库 ${baseProfiles.length} 条`
+  persistProfileSyncConfig()
+  if (!silent) showNotice(`本地基础库已启用 ${baseProfiles.length} 条`)
+  return {
+    ok: true,
+    count: baseProfiles.length,
+    baseCount: baseProfiles.length,
+    sharedCount: 0,
+    profiles: baseProfiles
+  }
+}
+
 const pullSharedProfiles = async ({ silent = false } = {}) => {
   if (!profileSyncConfig.enabled) return null
+  if (isLocalProfileTestMode()) return pullLocalBaseProfilesForTesting({ silent })
   if (!ensureProfileSyncAuthorized()) return null
   const response = await fetch(sharedProfileApiPath('/api/profiles/pull'), {
     cache: 'no-store',
@@ -1181,6 +1284,7 @@ const pullSharedProfiles = async ({ silent = false } = {}) => {
 
 const pushSharedProfiles = async () => {
   if (!profileSyncConfig.enabled) return null
+  if (isLocalProfileTestMode()) return null
   if (!ensureProfileSyncAuthorized()) return null
   const dirtyProfiles = getDirtyProfilesForSync()
   if (!dirtyProfiles.length) return null
@@ -1241,6 +1345,17 @@ const toggleProfileSync = () => {
     }
     syncSharedProfiles({ silent: false })
   }
+}
+
+const enableLocalBaseProfilesForTesting = () => {
+  if (!isLocalProfileTestMode()) return
+  profileSyncConfig.enabled = true
+  profileSyncStatus.value = '本地测试基础库加载中'
+  persistProfileSyncConfig()
+  pullLocalBaseProfilesForTesting({ silent: true }).catch((error) => {
+    console.error(error)
+    profileSyncStatus.value = '本地测试基础库加载失败'
+  })
 }
 
 const getProfileStatsSnapshot = () => {
@@ -2144,6 +2259,7 @@ const fillDraftFromRecord = (target, record) => {
     time: record.time || nowForInput(),
     qth: record.qth || '',
     device: record.device || '',
+    antenna: record.antenna || '',
     power: record.power || '',
     mode: record.mode || 'FM',
     signal: record.signal || '',
@@ -2185,6 +2301,7 @@ const saveRecordEditor = () => {
     time: editDraft.time || existing.time || nowForInput(),
     qth: editDraft.qth,
     device: editDraft.device,
+    antenna: editDraft.antenna,
     power: editDraft.power,
     mode: editDraft.mode,
     signal: editDraft.signal,
@@ -2241,6 +2358,7 @@ const makeRows = () =>
     呼号: record.callsign,
     QTH: record.qth,
     设备: record.device,
+    天线: record.antenna,
     功率: record.power,
     方式: record.mode || record.remarks,
     '通联时间 (BJT)': formatClock(record.time)
@@ -2276,7 +2394,7 @@ const getExcelFilename = () => {
 
 const buildExcelWorkbook = () => {
   const rows = makeRows()
-  const headers = ['序号', '呼号', 'QTH', '设备', '功率', '方式', '通联时间 (BJT)']
+  const headers = ['序号', '呼号', 'QTH', '设备', '天线', '功率', '方式', '通联时间 (BJT)']
   const exportTitle = activityConfig.name || getDefaultActivityName()
   const exportTimeRange = getExportTimeRange()
   const controlCallsign = normalizeCallsign(activityConfig.controlCallsign)
@@ -2301,13 +2419,14 @@ const buildExcelWorkbook = () => {
     { key: 'sn', width: 8 },
     { key: 'callsign', width: 15 },
     { key: 'qth', width: 25 },
-    { key: 'device', width: 28 },
+    { key: 'device', width: 24 },
+    { key: 'antenna', width: 16 },
     { key: 'power', width: 8 },
     { key: 'mode', width: 11 },
     { key: 'time', width: 18 }
   ]
-  worksheet.mergeCells('A1:G1')
-  worksheet.mergeCells('A2:G2')
+  worksheet.mergeCells('A1:H1')
+  worksheet.mergeCells('A2:H2')
   worksheet.getCell('A1').value = exportTitle
   worksheet.getCell('A2').value = controlLine
   worksheet.addRow(headers)
@@ -2316,6 +2435,7 @@ const buildExcelWorkbook = () => {
     controlCallsign,
     activityConfig.controlQth,
     activityConfig.controlDevice,
+    '',
     controlPower,
     '',
     exportTimeRange
@@ -2324,7 +2444,7 @@ const buildExcelWorkbook = () => {
     worksheet.addRow(headers.map((header) => row[header] || ''))
   })
   worksheet.addRow(['本日志由 HAM台网点名主控台 自动生成，技术支持BH1JSS'])
-  worksheet.mergeCells(`A${worksheet.rowCount}:G${worksheet.rowCount}`)
+  worksheet.mergeCells(`A${worksheet.rowCount}:H${worksheet.rowCount}`)
 
   const thinBorder = { style: 'thin', color: { argb: 'FF000000' } }
   worksheet.eachRow((row, rowNumber) => {
@@ -2705,10 +2825,25 @@ watch(
   }
 )
 watch(
-  () => form.callsign,
+  currentProfile,
+  (profile) => {
+    if (editingId.value) return
+    applyProfile(profile)
+  }
+)
+watch(
+  () => [form.prefix, form.callsign, profileParticipationCount.value],
   () => {
     if (editingId.value) return
-    applyProfile(currentProfile.value)
+    if (!form.callsign) {
+      if (form.remarks === FIRST_TIME_REMARK) form.remarks = ''
+      return
+    }
+    if (!profileParticipationCount.value && !currentProfile.value) {
+      if (!form.remarks) form.remarks = FIRST_TIME_REMARK
+      return
+    }
+    if (form.remarks === FIRST_TIME_REMARK) form.remarks = ''
   }
 )
 
@@ -2718,7 +2853,8 @@ onMounted(() => {
   loadProfileSyncConfig()
   loadDirtyProfiles()
   loadProfiles()
-  if (profileSyncConfig.enabled) syncSharedProfiles({ silent: true })
+  enableLocalBaseProfilesForTesting()
+  if (!isLocalProfileTestMode() && profileSyncConfig.enabled) syncSharedProfiles({ silent: true })
   loadFmoConfig()
   loadActivityConfig()
   publicSessionTimer.value = window.setInterval(() => {
@@ -2848,6 +2984,7 @@ onUnmounted(() => {
               <div class="clearable-input">
                 <input
                   v-model="form.callsign"
+                  list="callsign-options"
                   placeholder="BH1ABC"
                   autocomplete="off"
                   autocapitalize="characters"
@@ -2865,6 +3002,9 @@ onUnmounted(() => {
                   X
                 </button>
               </div>
+              <datalist id="callsign-options">
+                <option v-for="callsign in callsignSuggestions" :key="callsign" :value="callsign" />
+              </datalist>
             </label>
             <div class="entry-sync-row">
               <label class="profile-sync-control">
@@ -2906,51 +3046,38 @@ onUnmounted(() => {
         </div>
 
           <div class="status-lines">
-            <p v-if="duplicateCallsign">本次已记录，可作为补充记录保存。</p>
-            <p v-if="previousCheckinCount">本次出现 {{ previousCheckinCount }} 次，历史资料已参与补全。</p>
+            <p v-if="recordStatusText">{{ recordStatusText }}</p>
           </div>
 
           <div class="field-row">
             <label class="field">
               <span>QTH</span>
-              <div class="combo-input">
+              <div class="clearable-input">
                 <input v-model="form.qth" list="qth-options" placeholder="北京海淀 / OM89..." />
                 <button
                   type="button"
-                  class="combo-clear-button"
+                  class="input-clear-button"
                   :disabled="!form.qth"
                   title="清空 QTH"
                   @click="clearField(form, 'qth')"
                 >
                   X
                 </button>
-                <select title="选择历史 QTH" @change="pickKnownValue($event, 'qth')">
-                  <option value="">备选</option>
-                  <option v-for="value in searchableKnownValues.qth" :key="value" :value="value">
-                    {{ value }}
-                  </option>
-                </select>
               </div>
             </label>
             <label class="field">
               <span>使用设备名称</span>
-              <div class="combo-input">
+              <div class="clearable-input">
                 <input v-model="form.device" list="device-options" placeholder="如意通 6900DMR" />
                 <button
                   type="button"
-                  class="combo-clear-button"
+                  class="input-clear-button"
                   :disabled="!form.device"
                   title="清空设备名称"
                   @click="clearField(form, 'device')"
                 >
                   X
                 </button>
-                <select title="选择历史设备" @change="pickKnownValue($event, 'device')">
-                  <option value="">备选</option>
-                  <option v-for="value in searchableKnownValues.device" :key="value" :value="value">
-                    {{ value }}
-                  </option>
-                </select>
               </div>
             </label>
           </div>
@@ -2960,73 +3087,50 @@ onUnmounted(() => {
           <datalist id="device-options">
             <option v-for="value in searchableKnownValues.device" :key="value" :value="value" />
           </datalist>
-
           <div class="field-row compact">
             <label class="field">
               <span>模式</span>
-              <div class="combo-input">
+              <div class="clearable-input">
                 <input v-model="form.mode" list="mode-options" placeholder="FM / DMR" />
                 <button
                   type="button"
-                  class="combo-clear-button"
+                  class="input-clear-button"
                   :disabled="!form.mode"
                   title="清空模式"
                   @click="clearField(form, 'mode')"
                 >
                   X
                 </button>
-                <select title="选择历史模式" @change="pickKnownValue($event, 'mode')">
-                  <option value="">备选</option>
-                  <option
-                    v-for="value in [...new Set([...searchableKnownValues.mode, ...modeOptions])]"
-                    :key="value"
-                    :value="value"
-                  >
-                    {{ value }}
-                  </option>
-                </select>
               </div>
             </label>
             <label class="field">
               <span>功率</span>
-              <div class="combo-input">
+              <div class="clearable-input">
                 <input v-model="form.power" list="power-options" placeholder="L / 25W" />
                 <button
                   type="button"
-                  class="combo-clear-button"
+                  class="input-clear-button"
                   :disabled="!form.power"
                   title="清空功率"
                   @click="clearField(form, 'power')"
                 >
                   X
                 </button>
-                <select title="选择历史功率" @change="pickKnownValue($event, 'power')">
-                  <option value="">备选</option>
-                  <option v-for="value in searchableKnownValues.power" :key="value" :value="value">
-                    {{ value }}
-                  </option>
-                </select>
               </div>
             </label>
             <label class="field">
               <span>信号报告</span>
-              <div class="combo-input">
+              <div class="clearable-input">
                 <input v-model="form.signal" list="signal-options" placeholder="59" />
                 <button
                   type="button"
-                  class="combo-clear-button"
+                  class="input-clear-button"
                   :disabled="!form.signal"
                   title="清空信号报告"
                   @click="clearField(form, 'signal')"
                 >
                   X
                 </button>
-                <select title="选择历史信号报告" @change="pickKnownValue($event, 'signal')">
-                  <option value="">备选</option>
-                  <option v-for="value in searchableKnownValues.signal" :key="value" :value="value">
-                    {{ value }}
-                  </option>
-                </select>
               </div>
             </label>
           </div>
@@ -3039,8 +3143,25 @@ onUnmounted(() => {
           <datalist id="signal-options">
             <option v-for="value in searchableKnownValues.signal" :key="value" :value="value" />
           </datalist>
-
           <div class="remark-action-row">
+            <label class="field">
+              <span>天线</span>
+              <div class="clearable-input">
+                <input v-model="form.antenna" list="antenna-options" placeholder="车载 / GP / 八木" />
+                <button
+                  type="button"
+                  class="input-clear-button"
+                  :disabled="!form.antenna"
+                  title="清空天线"
+                  @click="clearField(form, 'antenna')"
+                >
+                  X
+                </button>
+              </div>
+            </label>
+            <datalist id="antenna-options">
+              <option v-for="value in searchableKnownValues.antenna" :key="value" :value="value" />
+            </datalist>
             <label class="field">
               <span>备注</span>
               <div class="clearable-input">
@@ -3111,6 +3232,7 @@ onUnmounted(() => {
                 <col class="time-col" />
                 <col class="qth-col" />
                 <col class="device-col" />
+                <col class="antenna-col" />
                 <col class="power-col" />
                 <col class="mode-col" />
               </colgroup>
@@ -3122,6 +3244,7 @@ onUnmounted(() => {
                   <th>时间</th>
                   <th>QTH</th>
                   <th>设备</th>
+                  <th>天线</th>
                   <th>功率</th>
                   <th>模式</th>
                 </tr>
@@ -3147,11 +3270,12 @@ onUnmounted(() => {
                   <td>{{ formatClock(record.time) }}</td>
                   <td>{{ record.qth || '-' }}</td>
                   <td>{{ record.device || '-' }}</td>
+                  <td>{{ record.antenna || '-' }}</td>
                   <td>{{ record.power || '-' }}</td>
                   <td :title="record.mode || '-'">{{ record.mode || '-' }}</td>
                 </tr>
                 <tr v-if="!filteredRecords.length">
-                  <td colspan="8" class="empty-state">暂无记录</td>
+                  <td colspan="9" class="empty-state">暂无记录</td>
                 </tr>
               </tbody>
             </table>
@@ -3512,27 +3636,32 @@ onUnmounted(() => {
           </label>
           <label class="field">
             <span>使用设备名称</span>
-            <div class="combo-input">
+            <div class="clearable-input">
               <input v-model="editDraft.device" list="device-options" />
               <button
                 type="button"
-                class="combo-clear-button"
+                class="input-clear-button"
                 :disabled="!editDraft.device"
                 title="清空设备名称"
                 @click="clearField(editDraft, 'device')"
               >
                 X
               </button>
-              <select title="选择历史设备" @change="pickKnownValue($event, 'device', editDraft)">
-                <option value="">备选</option>
-                <option
-                  v-for="value in getSearchableKnownValues('device', editDraft)"
-                  :key="value"
-                  :value="value"
-                >
-                  {{ value }}
-                </option>
-              </select>
+            </div>
+          </label>
+          <label class="field">
+            <span>天线</span>
+            <div class="clearable-input">
+              <input v-model="editDraft.antenna" list="antenna-options" />
+              <button
+                type="button"
+                class="input-clear-button"
+                :disabled="!editDraft.antenna"
+                title="清空天线"
+                @click="clearField(editDraft, 'antenna')"
+              >
+                X
+              </button>
             </div>
           </label>
         </div>

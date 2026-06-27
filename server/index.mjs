@@ -195,7 +195,7 @@ function createVerificationCode() {
   return `HAM-${new Date().getFullYear()}-${groups.join('-')}`
 }
 
-const profileFields = ['qth', 'device', 'power', 'mode', 'signal']
+const profileFields = ['qth', 'device', 'antenna', 'power', 'mode', 'signal']
 
 const sharedProfilesFile = () => path.join(dataDir, 'profiles', 'shared-profiles.json')
 const baseProfilesFile = () => path.join(dataDir, 'profiles', 'base-profiles.json')
@@ -226,6 +226,7 @@ function normalizeSharedProfile(profile) {
     callsign,
     qth: history.qth[0] || '',
     device: history.device[0] || '',
+    antenna: history.antenna[0] || '',
     power: history.power[0] || '',
     mode: history.mode[0] || '',
     signal: history.signal[0] || '',
@@ -259,6 +260,7 @@ function mergeSharedProfile(baseProfile, incomingProfile) {
     callsign: incoming.callsign,
     qth: incoming.qth || base.qth || history.qth[0] || '',
     device: incoming.device || base.device || history.device[0] || '',
+    antenna: incoming.antenna || base.antenna || history.antenna[0] || '',
     power: incoming.power || base.power || history.power[0] || '',
     mode: incoming.mode || base.mode || history.mode[0] || '',
     signal: incoming.signal || base.signal || history.signal[0] || '',
@@ -485,7 +487,7 @@ async function createExcelBuffer(activity, records) {
   const sortedRecords = [...records].sort((a, b) =>
     String(a.createdAt || a.time).localeCompare(String(b.createdAt || b.time))
   )
-  const headers = ['序号', '呼号', 'QTH', '设备', '功率', '方式', '通联时间 (BJT)']
+  const headers = ['序号', '呼号', 'QTH', '设备', '天线', '功率', '方式', '通联时间 (BJT)']
   const exportTitle = activity.name || 'HAM台网点名记录'
   const exportTimeRange = getExportTimeRange(sortedRecords)
   const controlCallsign = String(activity.controlCallsign || '').trim().toUpperCase()
@@ -510,13 +512,14 @@ async function createExcelBuffer(activity, records) {
     { width: 8 },
     { width: 15 },
     { width: 25 },
-    { width: 28 },
+    { width: 24 },
+    { width: 16 },
     { width: 8 },
     { width: 11 },
     { width: 18 }
   ]
-  worksheet.mergeCells('A1:G1')
-  worksheet.mergeCells('A2:G2')
+  worksheet.mergeCells('A1:H1')
+  worksheet.mergeCells('A2:H2')
   worksheet.getCell('A1').value = exportTitle
   worksheet.getCell('A2').value = controlLine
   worksheet.addRow(headers)
@@ -525,6 +528,7 @@ async function createExcelBuffer(activity, records) {
     controlCallsign,
     activity.controlQth || '',
     activity.controlDevice || '',
+    '',
     controlPower,
     '',
     exportTimeRange
@@ -535,13 +539,14 @@ async function createExcelBuffer(activity, records) {
       record.callsign || '',
       record.qth || '',
       record.device || '',
+      record.antenna || '',
       record.power || '',
       record.mode || record.remarks || '',
       formatClock(record.time)
     ])
   })
   worksheet.addRow(['本日志由 HAM台网点名主控台 自动生成，技术支持BH1JSS'])
-  worksheet.mergeCells(`A${worksheet.rowCount}:G${worksheet.rowCount}`)
+  worksheet.mergeCells(`A${worksheet.rowCount}:H${worksheet.rowCount}`)
 
   const thinBorder = { style: 'thin', color: { argb: 'FF000000' } }
   worksheet.eachRow((row, rowNumber) => {
@@ -1059,7 +1064,7 @@ async function readBaseProfileStats() {
     profiles.forEach((profile) => {
       const callsign = normalizeMonitorCallsign(profile?.callsign)
       if (callsign) callsigns.add(callsign)
-      ;['qth', 'device', 'power', 'mode', 'signal'].forEach((key) => {
+      profileFields.forEach((key) => {
         const values = [
           profile?.[key],
           ...((profile?.history && Array.isArray(profile.history[key]) && profile.history[key]) || [])

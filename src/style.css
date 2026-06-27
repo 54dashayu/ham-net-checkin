@@ -218,7 +218,7 @@ h2 {
   align-items: stretch;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(620px, 1.05fr) minmax(680px, 1.25fr);
+  grid-template-columns: minmax(0, 45fr) minmax(0, 55fr);
   height: 100%;
   min-height: 0;
 }
@@ -312,7 +312,7 @@ h2 {
 
 .field {
   display: grid;
-  gap: 5px;
+  gap: 3px;
 }
 
 .field span {
@@ -328,16 +328,16 @@ h2 {
   border: 1px solid var(--line-dark);
   border-radius: 6px;
   color: var(--text);
-  min-height: 34px;
+  min-height: 32px;
   min-width: 0;
   outline: none;
-  padding: 5px 8px;
+  padding: 4px 7px;
   width: 100%;
 }
 
 .combo-input {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 70px;
+  grid-template-columns: minmax(0, 1fr) 58px;
   position: relative;
 }
 
@@ -351,11 +351,15 @@ h2 {
   border-radius: 6px;
 }
 
+.callsign-combo-input {
+  grid-template-columns: minmax(0, 1fr) 58px;
+}
+
 .combo-input select {
   border-left: 0;
   border-radius: 0 6px 6px 0;
   color: #45504c;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   padding-left: 6px;
   padding-right: 4px;
@@ -371,8 +375,8 @@ h2 {
 .callsign-row {
   align-items: end;
   display: grid;
-  gap: 8px;
-  grid-template-columns: 86px minmax(260px, 1fr) minmax(250px, 320px);
+  gap: 6px;
+  grid-template-columns: 88px minmax(220px, 1fr) minmax(250px, 310px);
 }
 
 .prefix-field input,
@@ -402,14 +406,14 @@ h2 {
   font-family: Arial, Helvetica, sans-serif;
   font-size: 16px;
   font-weight: 900;
-  height: 34px;
+  height: 30px;
   justify-content: center;
   line-height: 1;
-  min-width: 34px;
+  min-width: 30px;
   overflow: hidden;
   padding: 0;
   text-align: center;
-  width: 34px;
+  width: 30px;
 }
 
 .input-clear-button {
@@ -424,10 +428,10 @@ h2 {
   border-color: #bdd2c8;
   border-radius: 6px;
   box-shadow: 0 0 0 2px rgba(249, 252, 250, 0.9);
-  height: 34px;
-  min-height: 34px;
+  height: 30px;
+  min-height: 30px;
   position: absolute;
-  right: 76px;
+  right: 62px;
   top: 50%;
   transform: translateY(-50%);
   width: 34px;
@@ -459,20 +463,20 @@ h2 {
 }
 
 .prefix-field input {
-  font-size: 18px;
-  min-height: 44px;
+  font-size: 17px;
+  min-height: 40px;
   text-align: center;
 }
 
 .call-field input {
-  font-size: 26px;
-  min-height: 44px;
+  font-size: 24px;
+  min-height: 40px;
 }
 
 .inline-featured-grid {
   align-items: stretch;
   display: grid;
-  gap: 6px;
+  gap: 5px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
@@ -481,9 +485,9 @@ h2 {
   border: 1px solid var(--line-dark);
   border-radius: 6px;
   display: grid;
-  min-height: 42px;
+  min-height: 38px;
   min-width: 0;
-  padding: 4px 7px;
+  padding: 4px 6px;
   text-align: left;
 }
 
@@ -495,7 +499,7 @@ h2 {
 .inline-featured-card strong {
   color: var(--green);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 900;
   line-height: 1.15;
   overflow: hidden;
@@ -505,7 +509,7 @@ h2 {
 
 .inline-featured-card span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 9.5px;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -526,12 +530,14 @@ h2 {
 
 .status-lines {
   min-height: 18px;
+  white-space: nowrap;
 }
 
 .status-lines p,
 .field-hint {
   color: var(--gold);
   font-size: 12px;
+  line-height: 18px;
   margin: 0;
 }
 
@@ -543,12 +549,13 @@ h2 {
 
 .field-row {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .field-row.compact {
-  grid-template-columns: 0.95fr 0.85fr 0.85fr;
+  gap: 8px;
+  grid-template-columns: 0.82fr 0.72fr 0.72fr;
 }
 
 .tool-button,
@@ -577,8 +584,8 @@ h2 {
 .remark-action-row {
   align-items: end;
   display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 7px;
+  grid-template-columns: minmax(120px, 0.42fr) minmax(0, 1fr) 130px;
 }
 
 .entry-sync-row {
@@ -586,13 +593,15 @@ h2 {
   align-items: center;
   display: grid;
   gap: 0 6px;
-  grid-template-columns: minmax(0, auto) 48px 48px;
+  grid-template-columns: minmax(0, 1fr) 42px 48px;
   grid-template-rows: 25px 17px;
-  justify-content: start;
+  justify-content: end;
+  justify-self: end;
   min-height: 44px;
   min-width: 0;
   overflow: visible;
   padding: 0;
+  width: 100%;
 }
 
 .entry-sync-row .profile-sync-control {
@@ -993,16 +1002,20 @@ tbody tr:nth-child(even) {
   width: 50px;
 }
 
+.antenna-col {
+  width: 72px;
+}
+
 .mode-col {
   width: 76px;
 }
 
 .log-table .qth-col {
-  width: 23%;
+  width: 21%;
 }
 
 .log-table .device-col {
-  width: 22%;
+  width: 19%;
 }
 
 .fmo-list .qth-col {
