@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const rootDir = path.resolve(import.meta.dirname, '..')
-const sizes = [16, 24, 32, 48, 64, 128, 256]
+const sizes = [16, 24, 32, 48, 64, 128, 256, 512, 1024]
 
 const crcTable = new Uint32Array(256)
 for (let n = 0; n < 256; n += 1) {

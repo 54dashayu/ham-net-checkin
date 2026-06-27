@@ -11,7 +11,8 @@
     "desktop": "npm run build && electron .",
     "dist:win": "npm run build && electron-builder --win portable dir --x64",
     "preview": "vite preview",
-    "serve": "node server/index.mjs"
+    "serve": "node server/index.mjs",
+    "dist:mac": "npm run build && electron-builder --mac dmg --x64"
   },
   "build": {
     "appId": "net.bh1jss.ham-checkin",
@@ -22,6 +23,7 @@
     "files": [
       "dist/**/*",
       "build/icon.ico",
+      "build/icon.icns",
       "build/icon.png",
       "electron/**/*",
       "server/**/*",
@@ -45,6 +47,10 @@
           ]
         }
       ]
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.icns"
     }
   },
   "dependencies": {
