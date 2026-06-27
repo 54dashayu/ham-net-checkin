@@ -3552,7 +3552,7 @@ onUnmounted(() => {
             <svg aria-hidden="true" viewBox="0 0 19 19">
               <use :href="`${serverBasePath}/icons.svg#github-icon`"></use>
             </svg>
-            GitHub 仓库
+            GitHub 项目
           </a>
           <button type="button" class="tool-button" @click="authorQrOpen = true">
             联系作者
@@ -3772,7 +3772,7 @@ onUnmounted(() => {
         <svg aria-hidden="true" viewBox="0 0 19 19">
           <use :href="`${serverBasePath}/icons.svg#github-icon`"></use>
         </svg>
-        GitHub 仓库
+        GitHub 项目
       </a>
     </footer>
 
