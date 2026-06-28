@@ -19,7 +19,10 @@ async function fetchWithTimeout(url, timeoutMs = 5000) {
       headers: { accept: 'application/json,text/plain,*/*' },
       signal: controller.signal
     })
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    if (!response.ok) {
+      const message = await response.text().catch(() => '')
+      throw new Error(message || `HTTP ${response.status}`)
+    }
     return response.text()
   } finally {
     window.clearTimeout(timer)
@@ -28,7 +31,7 @@ async function fetchWithTimeout(url, timeoutMs = 5000) {
 
 async function fetchJsonWithProxy(directUrl) {
   const proxyUrl = `/mmdvm-proxy?url=${encodeURIComponent(directUrl)}`
-  const urls = isLocalOrigin() ? [proxyUrl, directUrl] : [directUrl, proxyUrl]
+  const urls = isLocalOrigin() ? [proxyUrl] : [directUrl, proxyUrl]
   let lastError = null
   for (const url of urls) {
     try {

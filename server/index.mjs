@@ -1627,12 +1627,23 @@ async function proxyMmdvmPage(req, res) {
     send(res, 400, 'Unsupported protocol')
     return
   }
-  const response = await fetchWithTimeout(parsed, { headers: { accept: 'text/html,*/*' } }, 8000)
-  const text = await response.text()
-  send(res, response.status, text, {
-    'content-type': response.headers.get('content-type') || 'text/html; charset=utf-8',
-    'access-control-allow-origin': '*'
-  })
+  try {
+    const response = await fetchWithTimeout(parsed, { headers: { accept: 'text/html,*/*' } }, 8000)
+    const text = await response.text()
+    send(res, response.status, text, {
+      'content-type': response.headers.get('content-type') || 'text/html; charset=utf-8',
+      'access-control-allow-origin': '*'
+    })
+  } catch (error) {
+    const isTimeout = error?.name === 'AbortError'
+    const message = isTimeout
+      ? '局域网设备连接超时，请确认设备 IP 可访问，并在 macOS 系统设置中允许本软件访问本地网络。'
+      : '局域网设备连接失败，请确认设备 IP、网络连接和 macOS 本地网络权限。'
+    send(res, 502, message, {
+      'content-type': 'text/plain; charset=utf-8',
+      'access-control-allow-origin': '*'
+    })
+  }
 }
 
 async function serveCheckinFile(req, res) {
