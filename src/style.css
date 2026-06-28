@@ -674,7 +674,7 @@ h2 {
   align-items: center;
   display: grid;
   gap: 0 6px;
-  grid-template-columns: minmax(0, 1fr) 42px 48px;
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
   grid-template-rows: 25px 17px;
   justify-content: end;
   justify-self: end;
@@ -695,7 +695,7 @@ h2 {
 .entry-sync-row .profile-sync-button {
   grid-row: 1;
   justify-self: end;
-  min-width: 48px;
+  min-width: max-content;
   padding-left: 6px;
   padding-right: 6px;
 }
