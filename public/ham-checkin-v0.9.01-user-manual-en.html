@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HAM Net Check-in Console User Manual</title>
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+    body { margin: 0; background: #eef6f1; color: #1f2d2b; }
+    header { background: linear-gradient(135deg, #0b7a3b, #0e9b60); color: white; padding: 28px clamp(20px, 6vw, 72px); }
+    main { max-width: 960px; margin: -18px auto 48px; padding: 0 18px; }
+    article { background: white; border: 1px solid #d7e8df; border-radius: 18px; box-shadow: 0 14px 40px rgba(16, 70, 44, .12); padding: clamp(22px, 4vw, 42px); }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 42px); }
+    h2 { margin-top: 30px; color: #08733d; border-bottom: 1px solid #e4eee8; padding-bottom: 8px; }
+    p, li { line-height: 1.75; }
+    ul, ol { padding-left: 1.35em; }
+    .version { opacity: .86; margin: 0; }
+    .tip { background: #eefaf3; border-left: 4px solid #0d8f4f; padding: 12px 14px; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>HAM Net Check-in Console User Manual</h1>
+    <p class="version">Applies to: V0.9.01</p>
+  </header>
+  <main>
+    <article>
+      <p class="tip">This manual focuses on how to use the software. Download, checksum, and release information should be checked on the download page.</p>
+
+      <h2>1. Purpose</h2>
+      <p>HAM Net Check-in Console helps an amateur radio net control station run a check-in session. It combines activity setup, callsign logging, monitor-source candidates, control-station transmit indication, Excel export, and callsign profile assistance in one screen.</p>
+
+      <h2>2. Quick Start</h2>
+      <ol>
+        <li>Fill in the net activity name, control callsign, control QTH, rig, antenna, and power at the top.</li>
+        <li>Choose a monitor source on the right, enter the host or talkgroup, then click “Refresh”.</li>
+        <li>Click a station in the waiting queue or recent QSO list to copy it into the entry form.</li>
+        <li>Review and complete antenna, signal report, notes, and other fields.</li>
+        <li>Click “Add Record” to save the check-in to the main list.</li>
+        <li>At the end of the net, click “Excel” to export the log.</li>
+      </ol>
+
+      <h2>3. Top Activity Bar</h2>
+      <ul>
+        <li>Net Activity: identifies this session in saved files and exported logs.</li>
+        <li>Control Call: used by the control TX indicator.</li>
+        <li>Control QTH, Rig, Antenna, Power: written into the activity record.</li>
+        <li>Logged counter: click it to set the current count; the next serial number follows automatically.</li>
+        <li>Save / Auto Save / New: save the table, save automatically, or start a new activity.</li>
+        <li>The manual icon opens this page; the language icon switches between Chinese and English.</li>
+      </ul>
+
+      <h2>4. Adding a Record</h2>
+      <p>The left entry panel logs one station. Callsign is required. QTH, device, mode, power, signal report, antenna, and notes can be filled according to the actual contact. Click “Add Record” to write it to the main list; while editing an existing row, the button becomes “Save Changes”.</p>
+
+      <h2>5. Monitor Sources</h2>
+      <ul>
+        <li>FMO: enter the FMO host and choose ws or wss.</li>
+        <li>MMDVM: enter the MMDVM host to read Last Heard.</li>
+        <li>HAMBOX: enter the HAMBOX host to read recent activity.</li>
+        <li>BM DMR: enter the BrandMeister talkgroup.</li>
+        <li>Other network sources: placeholders are reserved for future support.</li>
+      </ul>
+      <p>Enable “Auto” to refresh candidates periodically. Click any candidate row to copy that station into the left entry form.</p>
+
+      <h2>6. Control TX Indicator</h2>
+      <p>The “Control TX” strip shows whether the configured control callsign is appearing in the active monitor source. It is a quick reminder of the control station’s transmit state.</p>
+
+      <h2>7. Logged Records</h2>
+      <ul>
+        <li>Search: filters records by callsign, QTH, device, or notes.</li>
+        <li>Click a row: opens the edit dialog for that record.</li>
+        <li>Select All / Cancel: selects or clears the current filtered records.</li>
+        <li>Delete selected: removes checked records.</li>
+        <li>Excel: exports the current log.</li>
+      </ul>
+
+      <h2>8. Callsign Database</h2>
+      <p>The callsign database helps fill station information. Enable it from the entry panel. For shared sync, register, wait for approval, import the verification key from the author, then enable sync.</p>
+
+      <h2>9. Saving and Export Tips</h2>
+      <ul>
+        <li>Confirm activity and control-station information before the net starts.</li>
+        <li>Enable Auto Save for formal check-ins.</li>
+        <li>For long sessions, click Save manually from time to time.</li>
+        <li>After the activity, export Excel and review serial numbers, callsigns, and timestamps.</li>
+      </ul>
+
+      <h2>10. Common Actions</h2>
+      <ul>
+        <li>Start over: click “New”.</li>
+        <li>Change serial start: click the logged counter at the top.</li>
+        <li>Edit a record: click a row in the main list.</li>
+        <li>Clear one field: click the X button inside that input.</li>
+        <li>Open the manual or switch languages: use the two top-right icons.</li>
+      </ul>
+    </article>
+  </main>
+</body>
+</html>

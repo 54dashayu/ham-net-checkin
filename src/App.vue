@@ -1,10 +1,12 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
+  BookOpen,
   Download,
   FileSpreadsheet,
   FilePlus2,
   Info,
+  Languages,
   Pencil,
   Plus,
   Radio,
@@ -38,6 +40,7 @@ const PROFILE_DIRTY_KEY = 'ham-net-checkin-profile-dirty-v1'
 const PROFILE_SYNC_CONFIG_KEY = 'ham-net-checkin-profile-sync-v1'
 const FMO_CONFIG_KEY = 'ham-net-checkin-fmo-config-v1'
 const ACTIVITY_CONFIG_KEY = 'ham-net-checkin-activity-config-v1'
+const LANGUAGE_KEY = 'ham-net-checkin-language-v1'
 const CONTROL_TX_STALE_MS = {
   bm: 1200,
   hambox: 1200,
@@ -68,6 +71,233 @@ const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
 const appVersion = 'V0.9.01'
+
+const i18nMessages = {
+  zh: {
+    appTitle: '台网点名主控台',
+    localVersionContact: '本地版请联系作者',
+    recorded: '已记录',
+    nextRecord: '下条',
+    setRecordedTitle: '点击设置已记录数量，下一条序号自动 +1',
+    activityName: '台网活动名称',
+    controlCallsign: '主控呼号',
+    controlQth: '主控 QTH',
+    controlDevice: '主控设备',
+    controlAntenna: '主控天线',
+    controlPower: '主控功率',
+    openManual: '打开使用说明书',
+    switchLanguage: '切换语言',
+    saveCurrent: '保存当前点名表格',
+    saving: '保存中',
+    save: '保存',
+    autoSave: '自动保存',
+    newActivity: '新建',
+    editRecord: '编辑记录',
+    cancelEdit: '取消编辑',
+    prefix: '前缀',
+    number: '数字',
+    callsignRequired: '呼号 *',
+    clearPrefix: '清空前缀',
+    clearCallsign: '清空呼号',
+    sync: '同步',
+    syncing: '同步中',
+    register: '注册',
+    waitingConfirm: '等待确认区',
+    deviceName: '使用设备名称',
+    mode: '模式',
+    power: '功率',
+    signal: '信号报告',
+    antenna: '天线',
+    remarks: '备注',
+    clearField: '清空',
+    saveChanges: '保存修改',
+    addRecord: '添加记录',
+    searchRecords: '搜索已记录呼号、QTH、设备、备注',
+    clearSearch: '清空搜索',
+    exportExcel: '导出 Excel',
+    selectAll: '全选',
+    cancelSelect: '取消',
+    deleteSelected: '删除选中',
+    serial: '序号',
+    callsign: '呼号',
+    time: '时间',
+    device: '设备',
+    selected: '选',
+    noRecords: '暂无记录',
+    monitorSource: '监听源',
+    protocol: '协议',
+    auto: '自动',
+    refresh: '刷新',
+    noRecentQso: '暂无最近通联',
+    controlTx: '主控发射',
+    transmitting: '正在发射！',
+    waitingControl: '等待监听到主控呼号',
+    setRecordedCount: '设置已记录数量',
+    recordedCount: '已记录数量',
+    close: '关闭',
+    cancel: '取消',
+    saveSetting: '保存设置',
+    serialHint: '保存后，下一条记录序号自动从已记录数量 +1 开始。',
+    sharedProfileRegister: '共享呼号资料库注册',
+    registrationCallsign: '注册呼号',
+    cracCertificate: 'CRAC 操作证书号',
+    registrationQth: '常用 QTH',
+    registrationRepeater: '常用服务器',
+    submitReview: '提交审核',
+    wechatContact: '微信联系',
+    importProfileKey: '导入验证密钥',
+    exportProfileKey: '导出验证密钥',
+    enableSync: '开启同步',
+    registerHint: '提交后需等待作者在后台审核，通过后获得验证密钥文件。导入验证密钥后，即可开启共享呼号资料库同步。',
+    aboutTitle: '关于台网点名主控台',
+    aboutText1: '台网点名主控台用于业余无线电台网活动记录，支持从 FMO、MMDVM、HAMBOX、BM DMR 等监听源选取友台，快速登记呼号、QTH、设备、功率、模式和信号报告，并导出 Excel 台网日志。',
+    aboutText2: '本软件由 BH1JSS 机婶婶贡献。网络版仅提供 BM DMR 模式测试，完整监听和本地设备接入建议使用本地版。',
+    githubProject: 'GitHub 项目',
+    contactAuthor: '联系作者',
+    footerCredit: '台网点名主控台 由 BH1JSS 机婶婶 贡献',
+    profileEnabled: '已启用呼号数据库',
+    profileDisabled: '启用呼号数据库',
+    languageNotice: '已切换到中文界面。',
+    qthPlaceholder: '北京海淀 / OM89...',
+    devicePlaceholder: '如意通 6900DMR',
+    antennaPlaceholder: '车载 / GP / 八木',
+    remarksPlaceholder: '热点 / 直频 / 首次参加',
+    controlQthPlaceholder: '北京 海淀',
+    controlDevicePlaceholder: 'MMDVM / 车台 / 手台',
+    controlAntennaPlaceholder: 'GP / 车载 / 八木',
+    controlPowerPlaceholder: 'L / 25W',
+    repeaterPlaceholder: 'DMR TG组/反射器 / 本地中继 / FMO服务器',
+    sourceFieldLabels: {
+      fmo: 'FMO 地址',
+      mmdvm: 'MMDVM 地址',
+      hambox: 'HAMBOX 地址',
+      bm: 'BM 通话组',
+      ysf: 'YSF 反射器',
+      fcs: 'FCS 反射器',
+      dstar: 'D-Star / XLX 反射器',
+      p25: 'P25 反射器',
+      nxdn: 'NXDN 反射器'
+    },
+    sourcePending: '监听功能待开放'
+  },
+  en: {
+    appTitle: 'Net Check-in Console',
+    localVersionContact: 'Contact author for desktop app',
+    recorded: 'Logged',
+    nextRecord: 'Next',
+    setRecordedTitle: 'Set logged count; next serial number adds 1',
+    activityName: 'Net Activity',
+    controlCallsign: 'Control Call',
+    controlQth: 'Control QTH',
+    controlDevice: 'Control Rig',
+    controlAntenna: 'Control Ant.',
+    controlPower: 'Control Power',
+    openManual: 'Open user manual',
+    switchLanguage: 'Switch language',
+    saveCurrent: 'Save current log',
+    saving: 'Saving',
+    save: 'Save',
+    autoSave: 'Auto Save',
+    newActivity: 'New',
+    editRecord: 'Edit Record',
+    cancelEdit: 'Cancel edit',
+    prefix: 'Prefix',
+    number: 'Number',
+    callsignRequired: 'Callsign *',
+    clearPrefix: 'Clear prefix',
+    clearCallsign: 'Clear callsign',
+    sync: 'Sync',
+    syncing: 'Syncing',
+    register: 'Register',
+    waitingConfirm: 'Waiting Queue',
+    deviceName: 'Radio / Device',
+    mode: 'Mode',
+    power: 'Power',
+    signal: 'Report',
+    antenna: 'Antenna',
+    remarks: 'Notes',
+    clearField: 'Clear',
+    saveChanges: 'Save Changes',
+    addRecord: 'Add Record',
+    searchRecords: 'Search callsign, QTH, device, notes',
+    clearSearch: 'Clear search',
+    exportExcel: 'Export Excel',
+    selectAll: 'Select All',
+    cancelSelect: 'Cancel',
+    deleteSelected: 'Delete selected',
+    serial: 'No.',
+    callsign: 'Callsign',
+    time: 'Time',
+    device: 'Device',
+    selected: 'Sel.',
+    noRecords: 'No records',
+    monitorSource: 'Source',
+    protocol: 'Protocol',
+    auto: 'Auto',
+    refresh: 'Refresh',
+    noRecentQso: 'No recent QSOs',
+    controlTx: 'Control TX',
+    transmitting: 'Transmitting!',
+    waitingControl: 'Waiting for control callsign',
+    setRecordedCount: 'Set Logged Count',
+    recordedCount: 'Logged Count',
+    close: 'Close',
+    cancel: 'Cancel',
+    saveSetting: 'Save Setting',
+    serialHint: 'After saving, the next serial number starts from logged count + 1.',
+    sharedProfileRegister: 'Shared Callsign DB Registration',
+    registrationCallsign: 'Registration Callsign',
+    cracCertificate: 'CRAC Certificate No.',
+    registrationQth: 'Common QTH',
+    registrationRepeater: 'Common Server',
+    submitReview: 'Submit',
+    wechatContact: 'WeChat',
+    importProfileKey: 'Import Key',
+    exportProfileKey: 'Export Key',
+    enableSync: 'Enable Sync',
+    registerHint: 'Submit for author review. After approval, import the verification key to enable shared callsign database sync.',
+    aboutTitle: 'About Net Check-in Console',
+    aboutText1: 'HAM Net Check-in Console helps net control stations record amateur radio check-ins. It can pick candidates from FMO, MMDVM, HAMBOX and BM DMR, then export an Excel net log.',
+    aboutText2: 'Contributed by BH1JSS. The web version is mainly for BM DMR testing. Use the desktop app for full local device monitoring.',
+    githubProject: 'GitHub',
+    contactAuthor: 'Contact',
+    footerCredit: 'HAM Net Check-in Console by BH1JSS',
+    profileEnabled: 'Callsign DB enabled',
+    profileDisabled: 'Enable callsign DB',
+    languageNotice: 'Switched to English interface.',
+    qthPlaceholder: 'Beijing / OM89...',
+    devicePlaceholder: 'Radio model',
+    antennaPlaceholder: 'Mobile / GP / Yagi',
+    remarksPlaceholder: 'Hotspot / Simplex / First check-in',
+    controlQthPlaceholder: 'Beijing',
+    controlDevicePlaceholder: 'MMDVM / Mobile / HT',
+    controlAntennaPlaceholder: 'GP / Mobile / Yagi',
+    controlPowerPlaceholder: 'L / 25W',
+    repeaterPlaceholder: 'DMR TG / reflector / repeater / FMO server',
+    sourceFieldLabels: {
+      fmo: 'FMO Host',
+      mmdvm: 'MMDVM Host',
+      hambox: 'HAMBOX Host',
+      bm: 'BM Talkgroup',
+      ysf: 'YSF Reflector',
+      fcs: 'FCS Reflector',
+      dstar: 'D-Star / XLX Reflector',
+      p25: 'P25 Reflector',
+      nxdn: 'NXDN Reflector'
+    },
+    sourcePending: 'Monitoring not available yet'
+  }
+}
+
+const language = ref(localStorage.getItem(LANGUAGE_KEY) === 'en' ? 'en' : 'zh')
+const t = (key) => i18nMessages[language.value]?.[key] ?? i18nMessages.zh[key] ?? key
+const userManualUrl = computed(() =>
+  `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v0.9.01-user-manual-en.html' : 'ham-checkin-v0.9.01-user-manual.html'}`
+)
+const sourceFieldLabel = (source) =>
+  i18nMessages[language.value]?.sourceFieldLabels?.[source.value] || source.fieldLabel
+const sourcePlaceholder = (source) =>
+  source.addressKind === 'network' ? t('sourcePending') : source.placeholder
 
 const formatLocalDate = (date = new Date()) => {
   const year = date.getFullYear()
@@ -718,7 +948,7 @@ const hasProfileSyncRegistration = computed(
       String(profileSyncConfig.registrationRepeater || '').trim().length >= 2 &&
       String(profileSyncConfig.verificationCode || '').trim().length >= 4)
 )
-const profileSyncLabel = computed(() => (profileSyncConfig.enabled ? '已启用呼号数据库' : '启用呼号数据库'))
+const profileSyncLabel = computed(() => (profileSyncConfig.enabled ? t('profileEnabled') : t('profileDisabled')))
 const profileKeyPayload = () => ({
   app: 'HAM 台网点名主控台',
   type: 'shared-profile-access-key',
@@ -730,9 +960,10 @@ const profileKeyPayload = () => ({
 const publicWebExpired = computed(
   () => isPublicWebVersion.value && publicElapsedMs.value >= PUBLIC_WEB_LIMITS.durationMs
 )
-const publicWebLimitText = computed(
-  () =>
-    `*网络版仅提供 BM DMR 模式测试；同一 IP 每 24 小时可测试 1 次：时长 1 小时 15 分钟、1 个日志文件、最多 60 条记录、Excel 下载 1 次。剩余 ${publicTimeRemainingText.value}`
+const publicWebLimitText = computed(() =>
+  language.value === 'en'
+    ? `*Web version is mainly for BM DMR testing; each IP can test once per 24h: 1h15m, 1 log file, up to 60 records, 1 Excel download. Remaining ${publicTimeRemainingText.value}`
+    : `*网络版仅提供 BM DMR 模式测试；同一 IP 每 24 小时可测试 1 次：时长 1 小时 15 分钟、1 个日志文件、最多 60 条记录、Excel 下载 1 次。剩余 ${publicTimeRemainingText.value}`
 )
 
 const isPrivateLanAddress = (address) => {
@@ -2683,6 +2914,16 @@ const saveExcelFile = async ({ silent = false, allowPicker = true } = {}) => {
   }
 }
 
+const openUserManual = () => {
+  window.open(userManualUrl.value, '_blank', 'noopener,noreferrer')
+}
+
+const toggleLanguage = () => {
+  language.value = language.value === 'zh' ? 'en' : 'zh'
+  localStorage.setItem(LANGUAGE_KEY, language.value)
+  showNotice(t('languageNotice'), 'top')
+}
+
 const scheduleAutoSave = () => {
   window.clearTimeout(autoSaveTimer.value)
   if (!autoSaveEnabled.value || (!excelFileHandle.value && !serverSaveAvailable.value)) return
@@ -2965,7 +3206,7 @@ onUnmounted(() => {
   <main class="app-shell" :class="{ 'has-public-bar': isPublicWebVersion }">
     <div v-if="isPublicWebVersion" class="public-limit-bar">
       <span>{{ publicWebLimitText }}</span>
-      <button type="button" @click="authorQrOpen = true">本地版请联系作者</button>
+      <button type="button" @click="authorQrOpen = true">{{ t('localVersionContact') }}</button>
     </div>
     <section class="activity-band">
       <div class="brand-block">
@@ -2974,7 +3215,7 @@ onUnmounted(() => {
         </div>
         <div>
           <p class="eyebrow">HAM Net Check-in</p>
-          <h1>台网点名主控台</h1>
+          <h1>{{ t('appTitle') }}</h1>
           <p class="system-clock">{{ formatSystemClock(systemClock) }}</p>
         </div>
       </div>
@@ -2982,59 +3223,79 @@ onUnmounted(() => {
       <button
         type="button"
         class="record-counter"
-        title="点击设置已记录数量，下一条序号自动 +1"
+        :title="t('setRecordedTitle')"
         @click="openSerialEditor"
       >
-        <span>已记录</span>
+        <span>{{ t('recorded') }}</span>
         <strong>{{ displayedRecordedCount }}</strong>
-        <em>下条 {{ nextRecordSerial }}</em>
+        <em>{{ t('nextRecord') }} {{ nextRecordSerial }}</em>
       </button>
 
       <div class="activity-fields">
         <label class="field">
-          <span>台网活动名称</span>
+          <span>{{ t('activityName') }}</span>
           <input v-model="activityConfig.name" />
         </label>
         <label class="field">
-          <span>主控呼号</span>
+          <span>{{ t('controlCallsign') }}</span>
           <input v-model="activityConfig.controlCallsign" placeholder="BH1JSS" />
         </label>
         <label class="field">
-          <span>主控 QTH</span>
-          <input v-model="activityConfig.controlQth" placeholder="北京 海淀" />
+          <span>{{ t('controlQth') }}</span>
+          <input v-model="activityConfig.controlQth" :placeholder="t('controlQthPlaceholder')" />
         </label>
         <label class="field">
-          <span>主控设备</span>
-          <input v-model="activityConfig.controlDevice" placeholder="MMDVM / 车台 / 手台" />
+          <span>{{ t('controlDevice') }}</span>
+          <input v-model="activityConfig.controlDevice" :placeholder="t('controlDevicePlaceholder')" />
         </label>
         <label class="field">
-          <span>主控天线</span>
-          <input v-model="activityConfig.controlAntenna" placeholder="GP / 车载 / 八木" />
+          <span>{{ t('controlAntenna') }}</span>
+          <input v-model="activityConfig.controlAntenna" :placeholder="t('controlAntennaPlaceholder')" />
         </label>
         <label class="field">
-          <span>主控功率</span>
-          <input v-model="activityConfig.controlPower" placeholder="L / 25W" />
+          <span>{{ t('controlPower') }}</span>
+          <input v-model="activityConfig.controlPower" :placeholder="t('controlPowerPlaceholder')" />
         </label>
       </div>
 
       <div class="activity-actions">
+        <div class="corner-actions" :aria-label="t('switchLanguage')">
+          <button
+            type="button"
+            class="corner-button manual-button"
+            :title="t('openManual')"
+            :aria-label="t('openManual')"
+            @click="openUserManual"
+          >
+            <BookOpen :size="17" />
+          </button>
+          <button
+            type="button"
+            class="corner-button language-button"
+            :title="t('switchLanguage')"
+            :aria-label="t('switchLanguage')"
+            @click="toggleLanguage"
+          >
+            <Languages :size="17" />
+          </button>
+        </div>
         <button
           type="button"
           class="tool-button"
           :disabled="excelSaving"
-          title="保存当前点名表格"
+          :title="t('saveCurrent')"
           @click="saveExcelFile()"
         >
           <Save :size="18" />
-          <span>{{ excelSaving ? '保存中' : '保存' }}</span>
+          <span>{{ excelSaving ? t('saving') : t('save') }}</span>
         </button>
         <label class="autosave-toggle">
           <input v-model="autoSaveEnabled" type="checkbox" @change="toggleAutoSave" />
-          <span>自动保存</span>
+          <span>{{ t('autoSave') }}</span>
         </label>
-        <button type="button" class="tool-button" title="新建点名活动" @click="createNewActivity">
+        <button type="button" class="tool-button" :title="t('newActivity')" @click="createNewActivity">
           <FilePlus2 :size="18" />
-          <span>新建</span>
+          <span>{{ t('newActivity') }}</span>
         </button>
       </div>
     </section>
@@ -3043,20 +3304,20 @@ onUnmounted(() => {
       <section class="left-workbench">
         <form class="entry-panel" @submit.prevent="submitRecord">
           <div v-if="editingId" class="panel-heading">
-            <h2>编辑记录</h2>
-            <button v-if="editingId" type="button" class="icon-button" title="取消编辑" @click="resetForm">
+            <h2>{{ t('editRecord') }}</h2>
+            <button v-if="editingId" type="button" class="icon-button" :title="t('cancelEdit')" @click="resetForm">
               <RotateCcw :size="18" />
             </button>
           </div>
 
           <div class="callsign-row">
             <label class="field prefix-field">
-              <span>前缀</span>
+              <span>{{ t('prefix') }}</span>
               <div class="clearable-input">
                 <input
                   v-model="form.prefix"
                   autocomplete="off"
-                  placeholder="数字"
+                  :placeholder="t('number')"
                   inputmode="numeric"
                   @input="handleCallsignInput($event, form, 'prefix')"
                   @compositionend="handleCallsignCompositionEnd(form, 'prefix')"
@@ -3066,7 +3327,7 @@ onUnmounted(() => {
                   type="button"
                   class="input-clear-button"
                   :disabled="!form.prefix"
-                  title="清空前缀"
+                  :title="t('clearPrefix')"
                   @click="clearField(form, 'prefix')"
                 >
                   X
@@ -3074,7 +3335,7 @@ onUnmounted(() => {
               </div>
             </label>
             <label class="field call-field">
-              <span>呼号 *</span>
+              <span>{{ t('callsignRequired') }}</span>
               <div class="clearable-input">
                 <input
                   v-model="form.callsign"
@@ -3090,7 +3351,7 @@ onUnmounted(() => {
                   type="button"
                   class="input-clear-button"
                   :disabled="!form.callsign"
-                  title="清空呼号"
+                  :title="t('clearCallsign')"
                   @click="clearCallsignField(form)"
                 >
                   X
@@ -3111,14 +3372,14 @@ onUnmounted(() => {
                 :disabled="profileSyncBusy || !profileSyncConfig.enabled || !hasProfileSyncRegistration"
                 @click="syncSharedProfiles({ silent: false })"
               >
-                {{ profileSyncBusy ? '同步中' : '同步' }}
+                {{ profileSyncBusy ? t('syncing') : t('sync') }}
               </button>
               <button
                 type="button"
                 class="profile-sync-button profile-register-button"
                 @click="profileRegistrationOpen = true"
               >
-                注册
+                {{ t('register') }}
               </button>
               <span v-if="profileSyncStatus" class="profile-sync-status">{{ profileSyncStatus }}</span>
             </div>
@@ -3136,7 +3397,7 @@ onUnmounted(() => {
             <strong>{{ candidate.callsign }}</strong>
             <span>{{ candidate.qth || candidate.grid || '-' }}</span>
           </button>
-          <div v-if="!featuredFmoCandidates.length" class="inline-featured-empty">等待确认区</div>
+          <div v-if="!featuredFmoCandidates.length" class="inline-featured-empty">{{ t('waitingConfirm') }}</div>
         </div>
 
           <div class="status-lines">
@@ -3147,12 +3408,12 @@ onUnmounted(() => {
             <label class="field">
               <span>QTH</span>
               <div class="clearable-input">
-                <input v-model="form.qth" list="qth-options" placeholder="北京海淀 / OM89..." />
+                <input v-model="form.qth" list="qth-options" :placeholder="t('qthPlaceholder')" />
                 <button
                   type="button"
                   class="input-clear-button"
                   :disabled="!form.qth"
-                  title="清空 QTH"
+                  :title="`${t('clearField')} QTH`"
                   @click="clearField(form, 'qth')"
                 >
                   X
@@ -3160,14 +3421,14 @@ onUnmounted(() => {
               </div>
             </label>
             <label class="field">
-              <span>使用设备名称</span>
+              <span>{{ t('deviceName') }}</span>
               <div class="clearable-input">
-                <input v-model="form.device" list="device-options" placeholder="如意通 6900DMR" />
+                <input v-model="form.device" list="device-options" :placeholder="t('devicePlaceholder')" />
                 <button
                   type="button"
                   class="input-clear-button"
                   :disabled="!form.device"
-                  title="清空设备名称"
+                  :title="`${t('clearField')} ${t('device')}`"
                   @click="clearField(form, 'device')"
                 >
                   X
@@ -3183,14 +3444,14 @@ onUnmounted(() => {
           </datalist>
           <div class="field-row compact">
             <label class="field">
-              <span>模式</span>
+              <span>{{ t('mode') }}</span>
               <div class="clearable-input">
                 <input v-model="form.mode" list="mode-options" placeholder="FM / DMR" />
                 <button
                   type="button"
                   class="input-clear-button"
                   :disabled="!form.mode"
-                  title="清空模式"
+                  :title="`${t('clearField')} ${t('mode')}`"
                   @click="clearField(form, 'mode')"
                 >
                   X
@@ -3198,14 +3459,14 @@ onUnmounted(() => {
               </div>
             </label>
             <label class="field">
-              <span>功率</span>
+              <span>{{ t('power') }}</span>
               <div class="clearable-input">
                 <input v-model="form.power" list="power-options" placeholder="L / 25W" />
                 <button
                   type="button"
                   class="input-clear-button"
                   :disabled="!form.power"
-                  title="清空功率"
+                  :title="`${t('clearField')} ${t('power')}`"
                   @click="clearField(form, 'power')"
                 >
                   X
@@ -3213,14 +3474,14 @@ onUnmounted(() => {
               </div>
             </label>
             <label class="field">
-              <span>信号报告</span>
+              <span>{{ t('signal') }}</span>
               <div class="clearable-input">
                 <input v-model="form.signal" list="signal-options" placeholder="59" />
                 <button
                   type="button"
                   class="input-clear-button"
                   :disabled="!form.signal"
-                  title="清空信号报告"
+                  :title="`${t('clearField')} ${t('signal')}`"
                   @click="clearField(form, 'signal')"
                 >
                   X
@@ -3239,14 +3500,14 @@ onUnmounted(() => {
           </datalist>
           <div class="remark-action-row">
             <label class="field">
-              <span>天线</span>
+              <span>{{ t('antenna') }}</span>
               <div class="clearable-input">
-                <input v-model="form.antenna" list="antenna-options" placeholder="车载 / GP / 八木" />
+                <input v-model="form.antenna" list="antenna-options" :placeholder="t('antennaPlaceholder')" />
                 <button
                   type="button"
                   class="input-clear-button"
                   :disabled="!form.antenna"
-                  title="清空天线"
+                  :title="`${t('clearField')} ${t('antenna')}`"
                   @click="clearField(form, 'antenna')"
                 >
                   X
@@ -3257,14 +3518,14 @@ onUnmounted(() => {
               <option v-for="value in searchableKnownValues.antenna" :key="value" :value="value" />
             </datalist>
             <label class="field">
-              <span>备注</span>
+              <span>{{ t('remarks') }}</span>
               <div class="clearable-input">
-                <input v-model="form.remarks" placeholder="热点 / 直频 / 首次参加" />
+                <input v-model="form.remarks" :placeholder="t('remarksPlaceholder')" />
                 <button
                   type="button"
                   class="input-clear-button"
                   :disabled="!form.remarks"
-                  title="清空备注"
+                  :title="`${t('clearField')} ${t('remarks')}`"
                   @click="clearField(form, 'remarks')"
                 >
                   X
@@ -3274,7 +3535,7 @@ onUnmounted(() => {
             <button class="primary-action" type="submit">
               <Save v-if="editingId" :size="18" />
               <Plus v-else :size="18" />
-              {{ editingId ? '保存修改' : '添加记录' }}
+              {{ editingId ? t('saveChanges') : t('addRecord') }}
             </button>
           </div>
         </form>
@@ -3283,26 +3544,26 @@ onUnmounted(() => {
           <div class="toolbar">
             <label class="search-box">
               <Search :size="18" />
-              <input v-model="searchText" placeholder="搜索已记录呼号、QTH、设备、备注" />
+              <input v-model="searchText" :placeholder="t('searchRecords')" />
               <button
                 type="button"
                 class="input-clear-button search-clear-button"
                 :disabled="!searchText"
-                title="清空搜索"
+                :title="t('clearSearch')"
                 @click="searchText = ''"
               >
                 X
               </button>
             </label>
             <div class="toolbar-actions">
-              <button type="button" class="tool-button" title="导出 Excel" @click="exportExcel">
+              <button type="button" class="tool-button" :title="t('exportExcel')" @click="exportExcel">
                 <FileSpreadsheet :size="18" />
                 <span>Excel</span>
               </button>
-              <button type="button" class="tool-button" title="全选" @click="toggleAllFilteredRecords">
-                <span>{{ allFilteredSelected ? '取消' : '全选' }}</span>
+              <button type="button" class="tool-button" :title="t('selectAll')" @click="toggleAllFilteredRecords">
+                <span>{{ allFilteredSelected ? t('cancelSelect') : t('selectAll') }}</span>
               </button>
-              <button type="button" class="icon-button danger" title="删除选中" @click="removeSelectedRecords">
+              <button type="button" class="icon-button danger" :title="t('deleteSelected')" @click="removeSelectedRecords">
                 <Trash2 :size="18" />
               </button>
               <input ref="fileInput" class="hidden-input" type="file" accept="application/json" @change="importJson" />
@@ -3332,15 +3593,15 @@ onUnmounted(() => {
               </colgroup>
               <thead>
                 <tr>
-                  <th>序号</th>
-                  <th>呼号</th>
-                  <th>时间</th>
+                  <th>{{ t('serial') }}</th>
+                  <th>{{ t('callsign') }}</th>
+                  <th>{{ t('time') }}</th>
                   <th>QTH</th>
-                  <th>设备</th>
-                  <th>天线</th>
-                  <th>功率</th>
-                  <th>模式</th>
-                  <th>选</th>
+                  <th>{{ t('device') }}</th>
+                  <th>{{ t('antenna') }}</th>
+                  <th>{{ t('power') }}</th>
+                  <th>{{ t('mode') }}</th>
+                  <th>{{ t('selected') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -3369,7 +3630,7 @@ onUnmounted(() => {
                   </td>
                 </tr>
                 <tr v-if="!filteredRecords.length">
-                  <td colspan="10" class="empty-state">暂无记录</td>
+                  <td colspan="10" class="empty-state">{{ t('noRecords') }}</td>
                 </tr>
               </tbody>
             </table>
@@ -3386,7 +3647,7 @@ onUnmounted(() => {
             </div>
             <div class="fmo-config" :class="{ compact: fmoConfig.source !== 'fmo' }">
               <label class="field source-field">
-                <span>监听源</span>
+                <span>{{ t('monitorSource') }}</span>
                 <select
                   :value="fmoConfig.source"
                   :class="{ 'emphasized-source-select': isPublicWebVersion && fmoConfig.source === 'bm' }"
@@ -3403,11 +3664,11 @@ onUnmounted(() => {
                 </select>
               </label>
               <label class="field">
-                <span>{{ currentMonitorSource.fieldLabel }}</span>
+                <span>{{ sourceFieldLabel(currentMonitorSource) }}</span>
                 <div v-if="fmoConfig.source === 'mmdvm'" class="clearable-input">
                   <input
                     v-model="fmoConfig.mmdvmHost"
-                    :placeholder="currentMonitorSource.placeholder"
+                    :placeholder="sourcePlaceholder(currentMonitorSource)"
                   />
                   <button
                     type="button"
@@ -3422,7 +3683,7 @@ onUnmounted(() => {
                 <div v-else-if="fmoConfig.source === 'hambox'" class="clearable-input">
                   <input
                     v-model="fmoConfig.hamboxHost"
-                    :placeholder="currentMonitorSource.placeholder"
+                    :placeholder="sourcePlaceholder(currentMonitorSource)"
                   />
                   <button
                     type="button"
@@ -3438,7 +3699,7 @@ onUnmounted(() => {
                   <input
                     v-model="fmoConfig.bmTalkgroup"
                     inputmode="numeric"
-                    :placeholder="currentMonitorSource.placeholder"
+                    :placeholder="sourcePlaceholder(currentMonitorSource)"
                   />
                   <button
                     type="button"
@@ -3452,12 +3713,12 @@ onUnmounted(() => {
                 </div>
                 <input
                   v-else-if="currentMonitorSource.addressKind === 'network'"
-                  :value="currentMonitorSource.placeholder"
-                  :placeholder="currentMonitorSource.placeholder"
+                  :value="sourcePlaceholder(currentMonitorSource)"
+                  :placeholder="sourcePlaceholder(currentMonitorSource)"
                   readonly
                 />
                 <div v-else class="clearable-input">
-                  <input v-model="fmoConfig.host" :placeholder="currentMonitorSource.placeholder" />
+                  <input v-model="fmoConfig.host" :placeholder="sourcePlaceholder(currentMonitorSource)" />
                   <button
                     type="button"
                     class="input-clear-button"
@@ -3470,7 +3731,7 @@ onUnmounted(() => {
                 </div>
               </label>
               <label v-if="fmoConfig.source === 'fmo'" class="field protocol-field">
-                <span>协议</span>
+                <span>{{ t('protocol') }}</span>
                 <select v-model="fmoConfig.protocol">
                   <option value="ws">ws</option>
                   <option value="wss">wss</option>
@@ -3478,7 +3739,7 @@ onUnmounted(() => {
               </label>
               <label class="toggle-field">
                 <input v-model="fmoConfig.autoRefresh" type="checkbox" />
-                <span>自动</span>
+                <span>{{ t('auto') }}</span>
               </label>
               <button
                 type="button"
@@ -3498,7 +3759,7 @@ onUnmounted(() => {
                 @click="refreshMonitorCandidates"
               >
                 <RefreshCw :size="18" :class="{ spinning: fmoRefreshing }" />
-                <span>刷新</span>
+                <span>{{ t('refresh') }}</span>
               </button>
             </div>
           </div>
@@ -3516,12 +3777,12 @@ onUnmounted(() => {
               </colgroup>
               <thead>
                 <tr>
-                  <th>呼号</th>
-                  <th>时间</th>
+                  <th>{{ t('callsign') }}</th>
+                  <th>{{ t('time') }}</th>
                   <th>QTH</th>
-                  <th>设备名称</th>
-                  <th>功率</th>
-                  <th>模式</th>
+                  <th>{{ t('deviceName') }}</th>
+                  <th>{{ t('power') }}</th>
+                  <th>{{ t('mode') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -3539,23 +3800,23 @@ onUnmounted(() => {
                   <td :title="candidate.mode || '-'">{{ candidate.mode || '-' }}</td>
                 </tr>
                 <tr v-if="!recentFmoCandidates.length">
-                  <td colspan="6" class="empty-state">暂无最近通联</td>
+                  <td colspan="6" class="empty-state">{{ t('noRecentQso') }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </section>
         <div class="control-tx-strip" :class="{ active: controlTxInfo?.isSpeaking }">
-          <span>主控发射</span>
+          <span>{{ t('controlTx') }}</span>
           <strong>{{ controlTxInfo?.callsign || normalizeCallsign(activityConfig.controlCallsign) || '-' }}</strong>
           <em v-if="controlTxInfo">
-            <template v-if="controlTxInfo.isSpeaking">正在发射！</template>
+            <template v-if="controlTxInfo.isSpeaking">{{ t('transmitting') }}</template>
             {{ formatClock(controlTxInfo.time) }}
             {{ controlTxInfo.source }}
             {{ controlTxInfo.relayName }}
             {{ controlTxInfo.mode }}
           </em>
-          <em v-else>等待监听到主控呼号</em>
+          <em v-else>{{ t('waitingControl') }}</em>
         </div>
       </section>
     </section>
@@ -3563,11 +3824,11 @@ onUnmounted(() => {
     <div v-if="serialEditorOpen" class="modal-backdrop serial-editor-backdrop" @click.self="closeSerialEditor">
       <form class="serial-modal" @submit.prevent="applySerialEditor">
         <div class="modal-head">
-          <h2>设置已记录数量</h2>
-          <button type="button" class="icon-button" title="关闭" @click="closeSerialEditor">X</button>
+          <h2>{{ t('setRecordedCount') }}</h2>
+          <button type="button" class="icon-button" :title="t('close')" @click="closeSerialEditor">X</button>
         </div>
         <label class="field">
-          <span>已记录数量</span>
+          <span>{{ t('recordedCount') }}</span>
           <input
             v-model="serialEditorDraft"
             type="number"
@@ -3577,10 +3838,10 @@ onUnmounted(() => {
             autofocus
           />
         </label>
-        <p class="modal-hint">保存后，下一条记录序号自动从已记录数量 +1 开始。</p>
+        <p class="modal-hint">{{ t('serialHint') }}</p>
         <div class="serial-modal-actions">
-          <button type="button" class="tool-button" @click="closeSerialEditor">取消</button>
-          <button type="submit" class="primary-action">保存设置</button>
+          <button type="button" class="tool-button" @click="closeSerialEditor">{{ t('cancel') }}</button>
+          <button type="submit" class="primary-action">{{ t('saveSetting') }}</button>
         </div>
       </form>
     </div>
@@ -3589,7 +3850,7 @@ onUnmounted(() => {
       <div class="author-qr-modal">
         <div class="modal-head">
           <h2>{{ authorQrTitle }}</h2>
-          <button type="button" class="icon-button" title="关闭" @click="authorQrOpen = false">X</button>
+          <button type="button" class="icon-button" :title="t('close')" @click="authorQrOpen = false">X</button>
         </div>
         <img :src="authorQrCodeUrl" alt="作者微信二维码" />
         <p>{{ authorQrHint }}</p>
@@ -3599,12 +3860,12 @@ onUnmounted(() => {
     <div v-if="profileRegistrationOpen" class="modal-backdrop" @click.self="profileRegistrationOpen = false">
       <div class="profile-registration-modal">
         <div class="modal-head">
-          <h2>共享呼号资料库注册</h2>
-          <button type="button" class="icon-button" title="关闭" @click="profileRegistrationOpen = false">X</button>
+          <h2>{{ t('sharedProfileRegister') }}</h2>
+          <button type="button" class="icon-button" :title="t('close')" @click="profileRegistrationOpen = false">X</button>
         </div>
         <div class="field-row">
           <label class="field">
-            <span>注册呼号</span>
+            <span>{{ t('registrationCallsign') }}</span>
             <input
               v-model="profileSyncConfig.registrationCallsign"
               autocomplete="off"
@@ -3614,67 +3875,66 @@ onUnmounted(() => {
             />
           </label>
           <label class="field">
-            <span>CRAC 操作证书号</span>
+            <span>{{ t('cracCertificate') }}</span>
             <input v-model="profileSyncConfig.cracCertificate" autocomplete="off" placeholder="操作证书号" />
           </label>
         </div>
         <div class="field-row">
           <label class="field">
-            <span>常用 QTH</span>
+            <span>{{ t('registrationQth') }}</span>
             <input v-model="profileSyncConfig.registrationQth" autocomplete="off" placeholder="北京 昌平" />
           </label>
           <label class="field">
-            <span>常用服务器</span>
+            <span>{{ t('registrationRepeater') }}</span>
             <input
               v-model="profileSyncConfig.registrationRepeater"
               autocomplete="off"
-              placeholder="DMR TG组/反射器 / 本地中继 / FMO服务器"
+              :placeholder="t('repeaterPlaceholder')"
             />
           </label>
         </div>
         <div class="profile-registration-actions">
           <button type="button" class="tool-button" :disabled="profileSyncBusy" @click="requestProfileRegistration">
-            提交审核
+            {{ t('submitReview') }}
           </button>
           <button type="button" class="tool-button" @click="authorQrOpen = true">
-            微信联系
+            {{ t('wechatContact') }}
           </button>
           <button type="button" class="tool-button" @click="profileKeyFileInput?.click()">
-            导入验证密钥
+            {{ t('importProfileKey') }}
           </button>
           <button type="button" class="tool-button" :disabled="!profileSyncConfig.profileKey" @click="exportProfileKey">
-            导出验证密钥
+            {{ t('exportProfileKey') }}
           </button>
           <button type="button" class="primary-action" :disabled="!hasProfileSyncRegistration" @click="profileSyncConfig.enabled = true; profileRegistrationOpen = false; syncSharedProfiles({ silent: false })">
-            开启同步
+            {{ t('enableSync') }}
           </button>
         </div>
-        <p class="modal-hint">提交后需等待作者在后台审核，通过后获得验证密钥文件。导入验证密钥后，即可开启共享呼号资料库同步。</p>
+        <p class="modal-hint">{{ t('registerHint') }}</p>
       </div>
     </div>
 
     <div v-if="aboutOpen" class="modal-backdrop" @click.self="aboutOpen = false">
       <div class="about-modal">
         <div class="modal-head">
-          <h2>关于台网点名主控台 <span class="version-badge">{{ appVersion }}</span></h2>
-          <button type="button" class="icon-button" title="关闭" @click="aboutOpen = false">X</button>
+          <h2>{{ t('aboutTitle') }} <span class="version-badge">{{ appVersion }}</span></h2>
+          <button type="button" class="icon-button" :title="t('close')" @click="aboutOpen = false">X</button>
         </div>
         <p>
-          台网点名主控台用于业余无线电台网活动记录，支持从 FMO、MMDVM、HAMBOX、BM DMR 等监听源选取友台，
-          快速登记呼号、QTH、设备、功率、模式和信号报告，并导出 Excel 台网日志。
+          {{ t('aboutText1') }}
         </p>
         <p>
-          本软件由 BH1JSS 机婶婶贡献。网络版仅提供 BM DMR 模式测试，完整监听和本地设备接入建议使用本地版。
+          {{ t('aboutText2') }}
         </p>
         <div class="about-actions">
           <a class="footer-link" href="https://github.com/54dashayu/ham-net-checkin" target="_blank" rel="noreferrer">
             <svg aria-hidden="true" viewBox="0 0 19 19">
               <use :href="`${serverBasePath}/icons.svg#github-icon`"></use>
             </svg>
-            GitHub 项目
+            {{ t('githubProject') }}
           </a>
           <button type="button" class="tool-button" @click="authorQrOpen = true">
-            联系作者
+            {{ t('contactAuthor') }}
           </button>
         </div>
       </div>
@@ -3683,20 +3943,20 @@ onUnmounted(() => {
     <div v-if="recordEditorOpen" class="modal-backdrop" @click.self="closeRecordEditor">
       <form class="record-modal" @submit.prevent="saveRecordEditor">
         <div class="panel-heading">
-          <h2>修改已记录通联</h2>
-          <button type="button" class="icon-button" title="关闭" @click="closeRecordEditor">
+          <h2>{{ t('editRecord') }}</h2>
+          <button type="button" class="icon-button" :title="t('close')" @click="closeRecordEditor">
             <RotateCcw :size="18" />
           </button>
         </div>
 
         <div class="callsign-row">
           <label class="field prefix-field">
-            <span>前缀</span>
+            <span>{{ t('prefix') }}</span>
             <div class="clearable-input">
               <input
                 v-model="editDraft.prefix"
                 autocomplete="off"
-                placeholder="数字"
+                :placeholder="t('number')"
                 inputmode="numeric"
                 @input="handleCallsignInput($event, editDraft, 'prefix')"
                 @compositionend="handleCallsignCompositionEnd(editDraft, 'prefix')"
@@ -3706,7 +3966,7 @@ onUnmounted(() => {
                 type="button"
                 class="input-clear-button"
                 :disabled="!editDraft.prefix"
-                title="清空前缀"
+                :title="t('clearPrefix')"
                 @click="clearField(editDraft, 'prefix')"
               >
                 X
@@ -3714,7 +3974,7 @@ onUnmounted(() => {
             </div>
           </label>
           <label class="field call-field">
-            <span>呼号 *</span>
+            <span>{{ t('callsignRequired') }}</span>
             <div class="clearable-input">
               <input
                 v-model="editDraft.callsign"
@@ -3728,7 +3988,7 @@ onUnmounted(() => {
                 type="button"
                 class="input-clear-button"
                 :disabled="!editDraft.callsign"
-                title="清空呼号"
+                :title="t('clearCallsign')"
                 @click="clearCallsignField(editDraft)"
               >
                 X
@@ -3754,14 +4014,14 @@ onUnmounted(() => {
             </div>
           </label>
           <label class="field">
-            <span>使用设备名称</span>
+            <span>{{ t('deviceName') }}</span>
             <div class="clearable-input">
               <input v-model="editDraft.device" list="device-options" />
               <button
                 type="button"
                 class="input-clear-button"
                 :disabled="!editDraft.device"
-                title="清空设备名称"
+                :title="`${t('clearField')} ${t('device')}`"
                 @click="clearField(editDraft, 'device')"
               >
                 X
@@ -3769,14 +4029,14 @@ onUnmounted(() => {
             </div>
           </label>
           <label class="field">
-            <span>天线</span>
+            <span>{{ t('antenna') }}</span>
             <div class="clearable-input">
               <input v-model="editDraft.antenna" list="antenna-options" />
               <button
                 type="button"
                 class="input-clear-button"
                 :disabled="!editDraft.antenna"
-                title="清空天线"
+                :title="`${t('clearField')} ${t('antenna')}`"
                 @click="clearField(editDraft, 'antenna')"
               >
                 X
@@ -3787,14 +4047,14 @@ onUnmounted(() => {
 
         <div class="field-row compact">
           <label class="field">
-            <span>模式</span>
+            <span>{{ t('mode') }}</span>
             <div class="clearable-input">
               <input v-model="editDraft.mode" list="mode-options" />
               <button
                 type="button"
                 class="input-clear-button"
                 :disabled="!editDraft.mode"
-                title="清空模式"
+                :title="`${t('clearField')} ${t('mode')}`"
                 @click="clearField(editDraft, 'mode')"
               >
                 X
@@ -3802,14 +4062,14 @@ onUnmounted(() => {
             </div>
           </label>
           <label class="field">
-            <span>功率</span>
+            <span>{{ t('power') }}</span>
             <div class="clearable-input">
               <input v-model="editDraft.power" list="power-options" />
               <button
                 type="button"
                 class="input-clear-button"
                 :disabled="!editDraft.power"
-                title="清空功率"
+                :title="`${t('clearField')} ${t('power')}`"
                 @click="clearField(editDraft, 'power')"
               >
                 X
@@ -3817,14 +4077,14 @@ onUnmounted(() => {
             </div>
           </label>
           <label class="field">
-            <span>信号报告</span>
+            <span>{{ t('signal') }}</span>
             <div class="clearable-input">
               <input v-model="editDraft.signal" list="signal-options" />
               <button
                 type="button"
                 class="input-clear-button"
                 :disabled="!editDraft.signal"
-                title="清空信号报告"
+                :title="`${t('clearField')} ${t('signal')}`"
                 @click="clearField(editDraft, 'signal')"
               >
                 X
@@ -3835,14 +4095,14 @@ onUnmounted(() => {
 
         <div class="field-row">
           <label class="field">
-            <span>时间</span>
+            <span>{{ t('time') }}</span>
             <div class="clearable-input">
               <input v-model="editDraft.time" type="datetime-local" />
               <button
                 type="button"
                 class="input-clear-button"
                 :disabled="!editDraft.time"
-                title="清空时间"
+                :title="`${t('clearField')} ${t('time')}`"
                 @click="clearField(editDraft, 'time')"
               >
                 X
@@ -3850,14 +4110,14 @@ onUnmounted(() => {
             </div>
           </label>
           <label class="field">
-            <span>备注</span>
+            <span>{{ t('remarks') }}</span>
             <div class="clearable-input">
               <input v-model="editDraft.remarks" />
               <button
                 type="button"
                 class="input-clear-button"
                 :disabled="!editDraft.remarks"
-                title="清空备注"
+                :title="`${t('clearField')} ${t('remarks')}`"
                 @click="clearField(editDraft, 'remarks')"
               >
                 X
@@ -3867,31 +4127,31 @@ onUnmounted(() => {
         </div>
 
         <div class="modal-actions">
-          <button type="button" class="tool-button" @click="closeRecordEditor">取消</button>
+          <button type="button" class="tool-button" @click="closeRecordEditor">{{ t('cancel') }}</button>
           <button type="submit" class="primary-action">
             <Save :size="18" />
-            保存修改
+            {{ t('saveChanges') }}
           </button>
         </div>
       </form>
     </div>
 
     <footer class="app-footer">
-      <span>台网点名主控台 由 BH1JSS 机婶婶 贡献</span>
+      <span>{{ t('footerCredit') }}</span>
       <button
         type="button"
         class="footer-link footer-button"
-        title="关于台网点名主控台"
+        :title="t('aboutTitle')"
         @click="aboutOpen = true"
       >
         <Info :size="18" />
-        关于
+        {{ t('aboutTitle') }}
       </button>
       <a class="footer-link" href="https://github.com/54dashayu/ham-net-checkin" target="_blank" rel="noreferrer">
         <svg aria-hidden="true" viewBox="0 0 19 19">
           <use :href="`${serverBasePath}/icons.svg#github-icon`"></use>
         </svg>
-        GitHub 项目
+        {{ t('githubProject') }}
       </a>
     </footer>
 

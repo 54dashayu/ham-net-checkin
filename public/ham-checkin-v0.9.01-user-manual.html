@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HAM 台网点名主控台使用说明</title>
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; }
+    body { margin: 0; background: #eef6f1; color: #1f2d2b; }
+    header { background: linear-gradient(135deg, #0b7a3b, #0e9b60); color: white; padding: 28px clamp(20px, 6vw, 72px); }
+    main { max-width: 960px; margin: -18px auto 48px; padding: 0 18px; }
+    article { background: white; border: 1px solid #d7e8df; border-radius: 18px; box-shadow: 0 14px 40px rgba(16, 70, 44, .12); padding: clamp(22px, 4vw, 42px); }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 42px); }
+    h2 { margin-top: 30px; color: #08733d; border-bottom: 1px solid #e4eee8; padding-bottom: 8px; }
+    p, li { line-height: 1.75; }
+    ul, ol { padding-left: 1.35em; }
+    .version { opacity: .86; margin: 0; }
+    .tip { background: #eefaf3; border-left: 4px solid #0d8f4f; padding: 12px 14px; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>HAM 台网点名主控台使用说明</h1>
+    <p class="version">适用版本：V0.9.01</p>
+  </header>
+  <main>
+    <article>
+      <p class="tip">本说明书只关注软件使用方法；下载、校验和发布信息请以下载页为准。</p>
+
+      <h2>1. 软件用途</h2>
+      <p>HAM 台网点名主控台用于业余无线电台网点名。主控可在一个界面中完成活动信息设置、友台呼号登记、监听源候选读取、主控发射提示、Excel 日志导出和呼号资料辅助补全。</p>
+
+      <h2>2. 快速开始</h2>
+      <ol>
+        <li>在顶部填写台网活动名称、主控呼号、主控 QTH、主控设备、主控天线和主控功率。</li>
+        <li>在右侧选择监听源，填写地址或通话组，点击“刷新”。</li>
+        <li>从“等待确认区”或右侧最近通联列表点击友台，自动带入呼号、QTH、设备、功率和模式。</li>
+        <li>检查并补充天线、信号报告、备注等信息。</li>
+        <li>点击“添加记录”写入主列表。</li>
+        <li>活动结束后点击“Excel”导出点名日志。</li>
+      </ol>
+
+      <h2>3. 顶部活动栏</h2>
+      <ul>
+        <li>台网活动名称：用于保存和导出时识别本次活动。</li>
+        <li>主控呼号：用于识别主控发射提示。</li>
+        <li>主控 QTH、设备、天线、功率：写入导出日志，便于活动留档。</li>
+        <li>已记录计数：点击可手动设置当前已记录数量，下一条序号自动顺延。</li>
+        <li>保存 / 自动保存 / 新建：用于保存当前表格、自动保存和开始新活动。</li>
+        <li>右上角说明书图标打开本页；语言图标在中文和英文界面之间切换。</li>
+      </ul>
+
+      <h2>4. 添加记录</h2>
+      <p>左侧录入区用于登记单个友台。呼号为必填；QTH、设备、模式、功率、信号报告、天线和备注可按实际通联情况填写。点击“添加记录”后进入主列表；编辑已有记录时按钮会变为“保存修改”。</p>
+
+      <h2>5. 监听源使用</h2>
+      <ul>
+        <li>FMO：填写 FMO 地址，并选择 ws 或 wss 协议。</li>
+        <li>MMDVM：填写 MMDVM 主机地址，读取 Last Heard。</li>
+        <li>HAMBOX：填写 HAMBOX 地址，读取最近通联。</li>
+        <li>BM DMR：填写 BrandMeister 通话组。</li>
+        <li>其他网络源：界面已预留，后续逐步接入。</li>
+      </ul>
+      <p>开启“自动”后，软件会定时刷新候选。点击候选行可将该友台带入左侧录入区。</p>
+
+      <h2>6. 主控发射提示</h2>
+      <p>底部“主控发射”提示条会根据当前监听源判断主控呼号是否正在出现，用于提醒主控当前发射状态。</p>
+
+      <h2>7. 已记录列表</h2>
+      <ul>
+        <li>搜索框：按呼号、QTH、设备或备注过滤记录。</li>
+        <li>点击记录行：打开编辑窗口修改该条记录。</li>
+        <li>全选 / 取消：批量选择当前筛选结果。</li>
+        <li>删除选中：删除已勾选记录。</li>
+        <li>Excel：导出当前点名日志。</li>
+      </ul>
+
+      <h2>8. 呼号资料库</h2>
+      <p>呼号资料库用于辅助补全友台资料。可勾选“启用呼号数据库”；如需共享同步，可点击“注册”并按提示提交审核、导入验证密钥、开启同步。</p>
+
+      <h2>9. 保存与导出建议</h2>
+      <ul>
+        <li>活动开始前先确认活动名称和主控信息。</li>
+        <li>正式点名前建议开启自动保存。</li>
+        <li>长时间活动中可定期手动点击“保存”。</li>
+        <li>活动结束后导出 Excel，并检查序号、呼号和时间是否完整。</li>
+      </ul>
+
+      <h2>10. 常见操作</h2>
+      <ul>
+        <li>重新开始活动：点击“新建”。</li>
+        <li>修改序号起点：点击顶部“已记录”计数卡片。</li>
+        <li>修改已有记录：点击主列表中的记录行。</li>
+        <li>清空单个输入框：点击输入框右侧的 X。</li>
+        <li>查看说明书或切换语言：使用右上角两个图标。</li>
+      </ul>
+    </article>
+  </main>
+</body>
+</html>

@@ -109,7 +109,7 @@ button {
   box-shadow: var(--shadow);
   display: grid;
   gap: 10px;
-  grid-template-columns: 252px 76px minmax(592px, 1fr) 210px;
+  grid-template-columns: 252px 76px minmax(570px, 1fr) 232px;
   min-width: calc(var(--app-min-width) - 20px);
   padding: 8px 10px;
 }
@@ -216,15 +216,61 @@ h2 {
 }
 
 .activity-actions {
+  align-content: space-between;
   align-items: end;
+  align-self: stretch;
   display: grid;
-  gap: 5px;
+  gap: 4px;
   grid-template-columns: 62px 82px 58px;
+  grid-template-rows: 28px 36px;
 }
 
 .activity-actions .tool-button,
 .autosave-toggle span {
   white-space: nowrap;
+}
+
+.activity-actions .tool-button {
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+.corner-actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.corner-button {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  box-shadow: 0 4px 12px rgba(14, 68, 39, 0.18);
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  width: 30px;
+}
+
+.corner-button.manual-button {
+  background: #075f2b;
+  border-color: #03491f;
+  color: #fff;
+}
+
+.corner-button.language-button {
+  background: #eef5ff;
+  border-color: #9ebfe8;
+  color: #165ca8;
+}
+
+.corner-button:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
 }
 
 .autosave-toggle {
