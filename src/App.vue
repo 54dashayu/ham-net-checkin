@@ -291,6 +291,7 @@ const i18nMessages = {
 
 const language = ref(localStorage.getItem(LANGUAGE_KEY) === 'en' ? 'en' : 'zh')
 const t = (key) => i18nMessages[language.value]?.[key] ?? i18nMessages.zh[key] ?? key
+const i18nText = (zh, en) => (language.value === 'en' ? en : zh)
 const userManualUrl = computed(() =>
   `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v0.9.01-user-manual-en.html' : 'ham-checkin-v0.9.01-user-manual.html'}`
 )
@@ -298,6 +299,29 @@ const sourceFieldLabel = (source) =>
   i18nMessages[language.value]?.sourceFieldLabels?.[source.value] || source.fieldLabel
 const sourcePlaceholder = (source) =>
   source.addressKind === 'network' ? t('sourcePending') : source.placeholder
+const sourceDisplayName = (source) => sourceFieldLabel(source)
+const monitorSourceOptionLabel = (source) => {
+  if (isPublicWebVersion.value && source.webLabel) {
+    return language.value === 'en' ? `${sourceDisplayName(source)} *` : source.webLabel
+  }
+  return sourceDisplayName(source)
+}
+const candidateSourceLabel = (label) => {
+  const value = String(label || '')
+  if (language.value !== 'en') return value
+  return (
+    {
+      最近通联: 'Recent QSO',
+      正在通联: 'On Air',
+      最近发言: 'Recent Talk',
+      正在发言: 'Speaking',
+      BM最近通联: 'BM Recent QSO',
+      BM实时: 'BM Live',
+      BM网络: 'BM Network',
+      'HAMBOX 实时': 'HAMBOX Live'
+    }[value] || value.replace('实时', 'Live')
+  )
+}
 
 const formatLocalDate = (date = new Date()) => {
   const year = date.getFullYear()
@@ -313,7 +337,7 @@ const formatSystemClock = (date = new Date()) => {
   return `${formatLocalDate(date)} ${hours}:${minutes}:${seconds}`
 }
 
-const getDefaultActivityName = () => `台网活动 ${formatLocalDate()}`
+const getDefaultActivityName = () => i18nText(`台网活动 ${formatLocalDate()}`, `Net Activity ${formatLocalDate()}`)
 
 const nowForInput = () => {
   const date = new Date()
@@ -377,8 +401,8 @@ const profileSyncBusy = ref(false)
 const profileSyncTimer = ref(null)
 const profileSyncDebounceTimer = ref(null)
 const publicSessionTimer = ref(null)
-const authorQrTitle = ref('联系作者')
-const authorQrHint = ref('请使用微信扫码')
+const authorQrTitle = ref(i18nText('联系作者', 'Contact Author'))
+const authorQrHint = ref(i18nText('请使用微信扫码', 'Scan with WeChat'))
 const fileInput = ref(null)
 const dbFileInput = ref(null)
 const profileKeyFileInput = ref(null)
@@ -387,8 +411,8 @@ const noticePosition = ref('bottom')
 const fmoCandidates = ref([])
 const fmoLogCandidates = ref([])
 const fmoSpeakingHistory = ref([])
-const fmoStatus = ref('未连接')
-const currentRelayName = ref('当前中继/服务器')
+const fmoStatus = ref(i18nText('未连接', 'Not connected'))
+const currentRelayName = ref(i18nText('当前中继/服务器', 'Current Repeater / Server'))
 const controlTxInfo = ref(null)
 const controlTxClearTimer = ref(null)
 const lastTopControlCandidateKey = ref('')
@@ -596,7 +620,11 @@ const formatDuration = (seconds) => {
   if (!Number.isFinite(value) || value <= 0) return '-'
   const minutes = Math.floor(value / 60)
   const rest = Math.floor(value % 60)
-  return minutes > 0 ? `${minutes}分${String(rest).padStart(2, '0')}秒` : `${rest}秒`
+  return language.value === 'en'
+    ? minutes > 0
+      ? `${minutes}m ${String(rest).padStart(2, '0')}s`
+      : `${rest}s`
+    : minutes > 0 ? `${minutes}分${String(rest).padStart(2, '0')}秒` : `${rest}秒`
 }
 
 const parseLegacyTime = (value) => {
@@ -883,11 +911,11 @@ const searchableKnownValues = computed(() =>
 
 const recordStatusText = computed(() => {
   if (duplicateCallsign.value && profileParticipationCount.value) {
-    return `本次已记录 · 历史 x${profileParticipationCount.value}`
+    return i18nText(`本次已记录 · 历史 x${profileParticipationCount.value}`, `Logged now · History x${profileParticipationCount.value}`)
   }
-  if (duplicateCallsign.value) return '本次已记录'
-  if (profileParticipationCount.value) return `历史 x${profileParticipationCount.value}`
-  if (form.callsign && !currentProfile.value) return '首次参与'
+  if (duplicateCallsign.value) return i18nText('本次已记录', 'Logged now')
+  if (profileParticipationCount.value) return i18nText(`历史 x${profileParticipationCount.value}`, `History x${profileParticipationCount.value}`)
+  if (form.callsign && !currentProfile.value) return i18nText('首次参与', 'First check-in')
   return ''
 })
 
@@ -983,7 +1011,7 @@ const isPrivateLanAddress = (address) => {
 
 const publicNetworkWarning = computed(() => {
   if (!isPublicWebVersion.value) return ''
-  if (fmoConfig.source !== 'bm') return '网络版仅支持 BM DMR 网络监听，当前监听源请使用本地版。'
+  if (fmoConfig.source !== 'bm') return i18nText('网络版仅支持 BM DMR 网络监听，当前监听源请使用本地版。', 'The web version only supports BM DMR monitoring. Use the desktop app for this source.')
   return ''
 })
 
@@ -1042,27 +1070,27 @@ const assertPublicWebAllowed = (action) => {
   if (!isPublicWebVersion.value) return true
   publicElapsedMs.value = Date.now() - publicSession.startedAt
   if (publicWebExpired.value) {
-    showNotice('网络版测试已超过 1 小时 15 分钟，本地版请联系作者微信。', 'top')
+    showNotice(i18nText('网络版测试已超过 1 小时 15 分钟，本地版请联系作者微信。', 'Web test time exceeded 1h 15m. Contact the author on WeChat for the desktop app.'), 'top')
     authorQrOpen.value = true
     return false
   }
   if (action === 'add-record' && records.value.length >= PUBLIC_WEB_LIMITS.maxRecords) {
-    showNotice('网络版测试最多记录 60 个友台，本地版请联系作者微信。', 'top')
+    showNotice(i18nText('网络版测试最多记录 60 个友台，本地版请联系作者微信。', 'The web test can log up to 60 stations. Contact the author on WeChat for the desktop app.'), 'top')
     authorQrOpen.value = true
     return false
   }
   if (action === 'save' && records.value.length > PUBLIC_WEB_LIMITS.maxRecords) {
-    showNotice('网络版测试最多保存 60 条记录，本地版请联系作者微信。', 'top')
+    showNotice(i18nText('网络版测试最多保存 60 条记录，本地版请联系作者微信。', 'The web test can save up to 60 records. Contact the author on WeChat for the desktop app.'), 'top')
     authorQrOpen.value = true
     return false
   }
   if (action === 'new-activity' && publicSession.activityId) {
-    showNotice('网络版测试仅允许 1 个日志文件，本地版请联系作者微信。', 'top')
+    showNotice(i18nText('网络版测试仅允许 1 个日志文件，本地版请联系作者微信。', 'The web test allows only one log file. Contact the author on WeChat for the desktop app.'), 'top')
     authorQrOpen.value = true
     return false
   }
   if (action === 'download' && publicSession.downloads >= PUBLIC_WEB_LIMITS.maxDownloads) {
-    showNotice('网络版测试仅允许下载 1 次 Excel，本地版请联系作者微信。', 'top')
+    showNotice(i18nText('网络版测试仅允许下载 1 次 Excel，本地版请联系作者微信。', 'The web test allows one Excel download. Contact the author on WeChat for the desktop app.'), 'top')
     authorQrOpen.value = true
     return false
   }
@@ -1237,13 +1265,20 @@ const chooseFmoCandidate = (candidate) => {
   if (candidate.power) form.power = candidate.power
   if (candidate.mode) form.mode = candidate.mode
   if (candidate.signal) form.signal = candidate.signal
-  const relayText = candidate.relayName ? `中继 ${candidate.relayName}` : ''
+  const relayText = candidate.relayName
+    ? i18nText(`中继 ${candidate.relayName}`, `Repeater ${candidate.relayName}`)
+    : ''
   const firstTimeRemark =
     !profileParticipationCount.value && !currentProfile.value ? FIRST_TIME_REMARK : ''
-  form.remarks = [firstTimeRemark, candidate.sourceLabel, relayText, candidate.comment]
+  form.remarks = [
+    firstTimeRemark ? i18nText(firstTimeRemark, 'First check-in') : '',
+    candidateSourceLabel(candidate.sourceLabel),
+    relayText,
+    candidate.comment
+  ]
     .filter(Boolean)
     .join(' / ')
-  showNotice(`已选取 ${candidate.callsign}`)
+  showNotice(i18nText(`已选取 ${candidate.callsign}`, `Selected ${candidate.callsign}`))
 }
 
 const pickKnownValue = (event, key, target = form) => {
@@ -1403,7 +1438,7 @@ const applyProfileKeyPayload = (payload) => {
   const repeater = String(payload?.repeater || payload?.registrationRepeater || '').trim()
   const verificationCode = String(payload?.verificationCode || payload?.code || '').trim()
   if (profileKey) {
-    if (!callsign) throw new Error('密钥文件内容不完整')
+    if (!callsign) throw new Error(i18nText('密钥文件内容不完整', 'The key file is incomplete.'))
     Object.assign(profileSyncConfig, {
       enabled: true,
       registrationCallsign: callsign,
@@ -1417,7 +1452,7 @@ const applyProfileKeyPayload = (payload) => {
     return
   }
   if (!callsign || cracCertificate.length < 4 || qth.length < 2 || repeater.length < 2 || verificationCode.length < 4) {
-    throw new Error('密钥文件内容不完整')
+    throw new Error(i18nText('密钥文件内容不完整', 'The key file is incomplete.'))
   }
   Object.assign(profileSyncConfig, {
     enabled: true,
@@ -1433,15 +1468,15 @@ const applyProfileKeyPayload = (payload) => {
 
 const exportProfileKey = () => {
   if (!String(profileSyncConfig.profileKey || '').trim()) {
-    showNotice('请先导入作者发放的验证密钥')
+    showNotice(i18nText('请先导入作者发放的验证密钥', 'Import the verification key from the author first.'))
     return
   }
   const payload = profileKeyPayload()
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: 'application/json;charset=utf-8'
   })
-  downloadBlob(blob, `HAM呼号库验证密钥-${payload.callsign || 'CALLSIGN'}.json`)
-  showNotice('验证密钥已导出，请妥善保存')
+  downloadBlob(blob, `HAM-callsign-db-key-${payload.callsign || 'CALLSIGN'}.json`)
+  showNotice(i18nText('验证密钥已导出，请妥善保存', 'Verification key exported. Keep it safe.'))
 }
 
 const importProfileKey = async (event) => {
@@ -1451,12 +1486,12 @@ const importProfileKey = async (event) => {
     const payload = JSON.parse(await file.text())
     applyProfileKeyPayload(payload)
     profileRegistrationOpen.value = false
-    profileSyncStatus.value = '已启用呼号数据库'
-    showNotice('验证密钥已导入')
+    profileSyncStatus.value = i18nText('已启用呼号数据库', 'Callsign DB enabled')
+    showNotice(i18nText('验证密钥已导入', 'Verification key imported.'))
     await syncSharedProfiles({ silent: false })
   } catch (error) {
-    profileSyncStatus.value = '验证密钥导入失败'
-    showNotice(error?.message || '验证密钥导入失败')
+    profileSyncStatus.value = i18nText('验证密钥导入失败', 'Failed to import verification key')
+    showNotice(error?.message || i18nText('验证密钥导入失败', 'Failed to import verification key'))
   } finally {
     event.target.value = ''
   }
@@ -1469,12 +1504,12 @@ const requestProfileRegistration = async () => {
   const repeater = String(profileSyncConfig.registrationRepeater || '').trim()
   if (!callsign || cracCertificate.length < 4 || qth.length < 2 || repeater.length < 2) {
     profileRegistrationOpen.value = true
-    profileSyncStatus.value = '请完整填写注册资料'
+    profileSyncStatus.value = i18nText('请完整填写注册资料', 'Please complete the registration form.')
     return
   }
   profileSyncConfig.registrationCallsign = callsign
   profileSyncBusy.value = true
-  profileSyncStatus.value = '提交审核中'
+  profileSyncStatus.value = i18nText('提交审核中', 'Submitting for review')
   try {
     const response = await fetch(sharedProfileApiPath('/api/profiles/register'), {
       method: 'POST',
@@ -1487,12 +1522,14 @@ const requestProfileRegistration = async () => {
       })
     })
     const data = await response.json()
-    if (!response.ok || !data?.ok) throw new Error(data?.error || '注册申请提交失败')
-    profileSyncStatus.value = data.status === 'approved' ? '已审核，请导入验证密钥后同步' : '已提交，等待作者审核'
+    if (!response.ok || !data?.ok) throw new Error(data?.error || i18nText('注册申请提交失败', 'Registration submission failed.'))
+    profileSyncStatus.value = data.status === 'approved'
+      ? i18nText('已审核，请导入验证密钥后同步', 'Approved. Import the verification key, then sync.')
+      : i18nText('已提交，等待作者审核', 'Submitted. Waiting for author review.')
     showNotice(profileSyncStatus.value)
   } catch (error) {
-    profileSyncStatus.value = '注册申请提交失败'
-    showNotice(error?.message || '注册申请提交失败')
+    profileSyncStatus.value = i18nText('注册申请提交失败', 'Registration submission failed.')
+    showNotice(error?.message || i18nText('注册申请提交失败', 'Registration submission failed.'))
   } finally {
     profileSyncBusy.value = false
   }
@@ -1502,9 +1539,9 @@ const ensureProfileSyncAuthorized = () => {
   if (isLocalProfileTestMode()) return true
   if (hasProfileSyncRegistration.value) return true
   profileSyncConfig.enabled = false
-  profileSyncStatus.value = '呼号数据库需导入验证密钥'
-  authorQrTitle.value = '注册共享呼号资料库'
-  authorQrHint.value = '请使用微信扫码'
+  profileSyncStatus.value = i18nText('呼号数据库需导入验证密钥', 'Callsign DB requires a verification key.')
+  authorQrTitle.value = i18nText('注册共享呼号资料库', 'Register Shared Callsign DB')
+  authorQrHint.value = i18nText('请使用微信扫码', 'Scan with WeChat')
   authorQrOpen.value = true
   return false
 }
@@ -1512,14 +1549,14 @@ const ensureProfileSyncAuthorized = () => {
 const pullLocalBaseProfilesForTesting = async ({ silent = false } = {}) => {
   if (!profileSyncConfig.enabled) return null
   const response = await fetch('./data/profiles/base-profiles.json', { cache: 'no-store' })
-  if (!response.ok) throw new Error(`本地基础库加载失败：HTTP ${response.status}`)
+  if (!response.ok) throw new Error(i18nText(`本地基础库加载失败：HTTP ${response.status}`, `Local base library failed: HTTP ${response.status}`))
   const data = await response.json()
   const baseProfiles = Array.isArray(data.profiles) ? data.profiles : []
   if (baseProfiles.length) mergeProfiles(baseProfiles, { preferIncoming: false })
   profileSyncConfig.lastPulledAt = new Date().toISOString()
-  profileSyncStatus.value = `本地测试基础库 ${baseProfiles.length} 条`
+  profileSyncStatus.value = i18nText(`本地测试基础库 ${baseProfiles.length} 条`, `Local test library: ${baseProfiles.length} profiles`)
   persistProfileSyncConfig()
-  if (!silent) showNotice(`本地基础库已启用 ${baseProfiles.length} 条`)
+  if (!silent) showNotice(i18nText(`本地基础库已启用 ${baseProfiles.length} 条`, `Local base library enabled: ${baseProfiles.length} profiles`))
   return {
     ok: true,
     count: baseProfiles.length,
@@ -1538,12 +1575,12 @@ const pullSharedProfiles = async ({ silent = false } = {}) => {
     headers: sharedProfileAuthHeaders()
   })
   const data = await response.json()
-  if (!response.ok || !data?.ok) throw new Error(data?.error || `共享库拉取失败：HTTP ${response.status}`)
+  if (!response.ok || !data?.ok) throw new Error(data?.error || i18nText(`共享库拉取失败：HTTP ${response.status}`, `Shared library pull failed: HTTP ${response.status}`))
   const sharedProfiles = Array.isArray(data.profiles) ? data.profiles : []
   if (sharedProfiles.length) mergeProfiles(sharedProfiles, { preferIncoming: false })
   profileSyncConfig.lastPulledAt = new Date().toISOString()
   persistProfileSyncConfig()
-  if (!silent) showNotice(`呼号数据库已同步 ${sharedProfiles.length} 条`)
+  if (!silent) showNotice(i18nText(`呼号数据库已同步 ${sharedProfiles.length} 条`, `Callsign DB synced: ${sharedProfiles.length} profiles`))
   return data
 }
 
@@ -1566,7 +1603,7 @@ const pushSharedProfiles = async () => {
     })
   })
   const data = await response.json()
-  if (!response.ok || !data?.ok) throw new Error(data?.error || `共享库回馈失败：HTTP ${response.status}`)
+  if (!response.ok || !data?.ok) throw new Error(data?.error || i18nText(`共享库回馈失败：HTTP ${response.status}`, `Shared library push failed: HTTP ${response.status}`))
   clearDirtyProfiles(Array.isArray(data.callsigns) ? data.callsigns : dirtyProfiles.map((profile) => profile.callsign))
   profileSyncConfig.lastPushedAt = new Date().toISOString()
   persistProfileSyncConfig()
@@ -1577,17 +1614,17 @@ const syncSharedProfiles = async ({ silent = false } = {}) => {
   if (!profileSyncConfig.enabled || profileSyncBusy.value) return
   if (!ensureProfileSyncAuthorized()) return
   profileSyncBusy.value = true
-  profileSyncStatus.value = silent ? profileSyncStatus.value : '同步中'
+  profileSyncStatus.value = silent ? profileSyncStatus.value : i18nText('同步中', 'Syncing')
   try {
     const pushed = await pushSharedProfiles()
     const pulled = await pullSharedProfiles({ silent: true })
     const pushedCount = pushed?.merged || 0
     const pulledCount = pulled?.count || 0
-    profileSyncStatus.value = `共享 ${pulledCount} 条，新增 ${pushedCount} 条`
-    if (!silent) showNotice('呼号数据库已同步')
+    profileSyncStatus.value = i18nText(`共享 ${pulledCount} 条，新增 ${pushedCount} 条`, `Shared ${pulledCount}, added ${pushedCount}`)
+    if (!silent) showNotice(i18nText('呼号数据库已同步', 'Callsign DB synced.'))
   } catch (error) {
-    profileSyncStatus.value = '共享库同步失败'
-    if (!silent) showNotice(error?.message || '共享库同步失败')
+    profileSyncStatus.value = i18nText('共享库同步失败', 'Shared library sync failed')
+    if (!silent) showNotice(error?.message || i18nText('共享库同步失败', 'Shared library sync failed'))
   } finally {
     profileSyncBusy.value = false
   }
@@ -1615,11 +1652,11 @@ const toggleProfileSync = () => {
 const enableLocalBaseProfilesForTesting = () => {
   if (!isLocalProfileTestMode()) return
   profileSyncConfig.enabled = true
-  profileSyncStatus.value = '本地测试基础库加载中'
+  profileSyncStatus.value = i18nText('本地测试基础库加载中', 'Loading local test library')
   persistProfileSyncConfig()
   pullLocalBaseProfilesForTesting({ silent: true }).catch((error) => {
     console.error(error)
-    profileSyncStatus.value = '本地测试基础库加载失败'
+    profileSyncStatus.value = i18nText('本地测试基础库加载失败', 'Failed to load local test library')
   })
 }
 
@@ -2031,7 +2068,10 @@ const handleBmPacket = (packet, talkgroup) => {
       `42["searchMongo",${JSON.stringify({ query: `DestinationID = ${talkgroup}`, amount: 80 })}]`
     )
     currentRelayName.value = `BrandMeister TG${talkgroup}`
-    fmoStatus.value = `BM 实时监听中 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`
+    fmoStatus.value = i18nText(
+      `BM 实时监听中 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`,
+      `BM live monitoring ${new Date().toLocaleTimeString('en-US', { hour12: false })}`
+    )
     return
   }
   if (!packet.startsWith('42')) return
@@ -2096,7 +2136,7 @@ const handleFmoEvent = (message) => {
     ].slice(0, 40)
     currentLiveCallsign.value = callsign
     rebuildFmoCandidatesFromDashboardModel()
-    fmoStatus.value = `实时 ${callsign}`
+    fmoStatus.value = i18nText(`实时 ${callsign}`, `Live ${callsign}`)
     return
   }
 
@@ -2197,10 +2237,10 @@ const connectFmoEvents = async (host) => {
     onStatus(status) {
       if (fmoConfig.source !== 'fmo') return
       if (status === 'connected') {
-        fmoStatus.value = currentLiveCallsign.value ? fmoStatus.value : '实时事件已连接'
+        fmoStatus.value = currentLiveCallsign.value ? fmoStatus.value : i18nText('实时事件已连接', 'Live events connected')
       }
-      if (status === 'reconnecting') fmoStatus.value = '实时事件重连中'
-      if (status === 'disconnected') fmoStatus.value = '实时事件已断开'
+      if (status === 'reconnecting') fmoStatus.value = i18nText('实时事件重连中', 'Live events reconnecting')
+      if (status === 'disconnected') fmoStatus.value = i18nText('实时事件已断开', 'Live events disconnected')
     }
   })
 
@@ -2241,11 +2281,11 @@ const showFmoApiFallbackNotice = (message) => {
 const connectFmo = async () => {
   const host = normalizeHost(fmoConfig.host)
   if (!isValidHostAddress(host)) {
-    showNotice('请输入有效的 FMO 地址')
+    showNotice(i18nText('请输入有效的 FMO 地址', 'Enter a valid FMO address.'))
     return null
   }
 
-  fmoStatus.value = '连接 FMO 实时事件'
+  fmoStatus.value = i18nText('连接 FMO 实时事件', 'Connecting FMO live events')
   let eventsClient = null
   let eventError = null
 
@@ -2254,21 +2294,21 @@ const connectFmo = async () => {
   } catch (error) {
     eventError = error
     console.warn('FMO 实时事件不可用:', error)
-    fmoStatus.value = '实时事件不可用'
+    fmoStatus.value = i18nText('实时事件不可用', 'Live events unavailable')
   }
 
   try {
     const apiClient = await connectFmoApi(host)
     if (fmoConfig.source === 'fmo') {
-      fmoStatus.value = `FMO 已连接 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`
+      fmoStatus.value = i18nText(`FMO 已连接 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`, `FMO connected ${new Date().toLocaleTimeString('en-US', { hour12: false })}`)
     }
     return apiClient
   } catch (error) {
     console.warn('FMO 控制接口不可用:', error)
     if (eventsClient || hasActiveFmoEventsClient()) {
       if (fmoConfig.source === 'fmo') {
-        fmoStatus.value = `实时监听中 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`
-        showFmoApiFallbackNotice('FMO 控制接口超时，已使用实时监听')
+        fmoStatus.value = i18nText(`实时监听中 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`, `Live monitoring ${new Date().toLocaleTimeString('en-US', { hour12: false })}`)
+        showFmoApiFallbackNotice(i18nText('FMO 控制接口超时，已使用实时监听', 'FMO control API timed out; live monitoring is active.'))
       }
       return null
     }
@@ -2279,12 +2319,12 @@ const connectFmo = async () => {
 const refreshFmoCandidates = async () => {
   if (publicNetworkWarning.value) {
     showNotice(publicNetworkWarning.value)
-    fmoStatus.value = '当前网络环境不能直连 FMO'
+    fmoStatus.value = i18nText('当前网络环境不能直连 FMO', 'Current network cannot directly access FMO.')
     return
   }
   const host = normalizeHost(fmoConfig.host)
   if (!isValidHostAddress(host)) {
-    showNotice('请输入有效的 FMO 地址')
+    showNotice(i18nText('请输入有效的 FMO 地址', 'Enter a valid FMO address.'))
     return
   }
 
@@ -2296,13 +2336,13 @@ const refreshFmoCandidates = async () => {
     if (client) await refreshCurrentRelayName(client)
     if (!isCurrentMonitorRequest(requestId, 'fmo')) return
     if (!currentLiveCallsign.value) {
-      fmoStatus.value = `实时监听中 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`
+      fmoStatus.value = i18nText(`实时监听中 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`, `Live monitoring ${new Date().toLocaleTimeString('en-US', { hour12: false })}`)
     }
   } catch (error) {
     console.error(error)
     closeFmoClient()
-    fmoStatus.value = '连接失败'
-    showNotice(error?.message || 'FMO 连接失败')
+    fmoStatus.value = i18nText('连接失败', 'Connection failed')
+    showNotice(error?.message || i18nText('FMO 连接失败', 'FMO connection failed.'))
   } finally {
     if (isCurrentMonitorRequest(requestId, 'fmo')) fmoRefreshing.value = false
   }
@@ -2311,12 +2351,12 @@ const refreshFmoCandidates = async () => {
 const refreshMmdvmCandidates = async () => {
   if (publicNetworkWarning.value) {
     showNotice(publicNetworkWarning.value)
-    fmoStatus.value = '当前网络环境不能直连 MMDVM'
+    fmoStatus.value = i18nText('当前网络环境不能直连 MMDVM', 'Current network cannot directly access MMDVM.')
     return
   }
   const host = normalizeHost(fmoConfig.mmdvmHost)
   if (!isValidHostAddress(host)) {
-    showNotice('请输入有效的 MMDVM 地址')
+    showNotice(i18nText('请输入有效的 MMDVM 地址', 'Enter a valid MMDVM address.'))
     return
   }
 
@@ -2324,7 +2364,7 @@ const refreshMmdvmCandidates = async () => {
   closeFmoClient()
   fmoRefreshing.value = true
   try {
-    fmoStatus.value = '读取 MMDVM Last Heard'
+    fmoStatus.value = i18nText('读取 MMDVM Last Heard', 'Reading MMDVM Last Heard')
     const result = await fetchMmdvmLastHeard(host)
     if (!isCurrentMonitorRequest(requestId, 'mmdvm')) return
     currentRelayName.value = result.target || result.rows[0]?.target || 'MMDVM Last Heard'
@@ -2333,12 +2373,12 @@ const refreshMmdvmCandidates = async () => {
       .filter(Boolean)
       .slice(0, 20)
     syncControlTxFromTopCandidate()
-    fmoStatus.value = `MMDVM 已刷新 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`
+    fmoStatus.value = i18nText(`MMDVM 已刷新 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`, `MMDVM refreshed ${new Date().toLocaleTimeString('en-US', { hour12: false })}`)
   } catch (error) {
     if (!isCurrentMonitorRequest(requestId, 'mmdvm')) return
     console.error(error)
-    fmoStatus.value = 'MMDVM 读取失败'
-    showNotice(error?.message || 'MMDVM 页面读取失败')
+    fmoStatus.value = i18nText('MMDVM 读取失败', 'MMDVM read failed')
+    showNotice(error?.message || i18nText('MMDVM 页面读取失败', 'Failed to read MMDVM page.'))
   } finally {
     if (isCurrentMonitorRequest(requestId, 'mmdvm')) fmoRefreshing.value = false
   }
@@ -2347,12 +2387,12 @@ const refreshMmdvmCandidates = async () => {
 const refreshHamboxCandidates = async () => {
   if (publicNetworkWarning.value) {
     showNotice(publicNetworkWarning.value)
-    fmoStatus.value = '当前网络环境不能直连 HAMBOX'
+    fmoStatus.value = i18nText('当前网络环境不能直连 HAMBOX', 'Current network cannot directly access HAMBOX.')
     return
   }
   const host = normalizeHost(fmoConfig.hamboxHost)
   if (!isValidHostAddress(host)) {
-    showNotice('请输入有效的 HAMBOX 地址')
+    showNotice(i18nText('请输入有效的 HAMBOX 地址', 'Enter a valid HAMBOX address.'))
     return
   }
 
@@ -2360,7 +2400,7 @@ const refreshHamboxCandidates = async () => {
   closeFmoClient()
   fmoRefreshing.value = true
   try {
-    fmoStatus.value = '读取 HAMBOX Last Heard'
+    fmoStatus.value = i18nText('读取 HAMBOX Last Heard', 'Reading HAMBOX Last Heard')
     const result = await fetchHamboxLastHeard(host)
     if (!isCurrentMonitorRequest(requestId, 'hambox')) return
     currentRelayName.value = result.target || 'HAMBOX'
@@ -2369,12 +2409,12 @@ const refreshHamboxCandidates = async () => {
       .filter(Boolean)
       .slice(0, 20)
     syncControlTxFromTopCandidate()
-    fmoStatus.value = `HAMBOX 已刷新 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`
+    fmoStatus.value = i18nText(`HAMBOX 已刷新 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`, `HAMBOX refreshed ${new Date().toLocaleTimeString('en-US', { hour12: false })}`)
   } catch (error) {
     if (!isCurrentMonitorRequest(requestId, 'hambox')) return
     console.error(error)
-    fmoStatus.value = 'HAMBOX 读取失败'
-    showNotice(error?.message || 'HAMBOX 数据读取失败')
+    fmoStatus.value = i18nText('HAMBOX 读取失败', 'HAMBOX read failed')
+    showNotice(error?.message || i18nText('HAMBOX 数据读取失败', 'Failed to read HAMBOX data.'))
   } finally {
     if (isCurrentMonitorRequest(requestId, 'hambox')) fmoRefreshing.value = false
   }
@@ -2383,14 +2423,14 @@ const refreshHamboxCandidates = async () => {
 const refreshBrandmeisterCandidates = async () => {
   const talkgroup = String(fmoConfig.bmTalkgroup || '').replace(/\D+/g, '')
   if (!talkgroup) {
-    showNotice('请填写 BrandMeister 通话组 ID')
+    showNotice(i18nText('请填写 BrandMeister 通话组 ID', 'Enter a BrandMeister talkgroup ID.'))
     return
   }
 
   const requestId = nextMonitorRequestId()
   closeFmoClient()
   fmoRefreshing.value = true
-  fmoStatus.value = `连接 BM TG${talkgroup}`
+  fmoStatus.value = i18nText(`连接 BM TG${talkgroup}`, `Connecting BM TG${talkgroup}`)
   currentRelayName.value = `BrandMeister TG${talkgroup}`
 
   const socket = new WebSocket('wss://api.brandmeister.network/lh/socket.io/?EIO=4&transport=websocket')
@@ -2406,14 +2446,14 @@ const refreshBrandmeisterCandidates = async () => {
   socket.addEventListener('error', () => {
     if (bmSocket.value !== socket || !isCurrentMonitorRequest(requestId, 'bm')) return
     fmoRefreshing.value = false
-    fmoStatus.value = 'BM 网络连接失败'
-    showNotice('BM 网络连接失败，请稍后重试')
+    fmoStatus.value = i18nText('BM 网络连接失败', 'BM network connection failed')
+    showNotice(i18nText('BM 网络连接失败，请稍后重试', 'BM network connection failed. Try again later.'))
   })
   socket.addEventListener('close', () => {
     if (bmSocket.value !== socket || !isCurrentMonitorRequest(requestId, 'bm')) return
     bmSocket.value = null
     fmoRefreshing.value = false
-    fmoStatus.value = 'BM 网络已断开'
+    fmoStatus.value = i18nText('BM 网络已断开', 'BM network disconnected')
   })
 }
 
@@ -2425,9 +2465,16 @@ const refreshNetworkModePlaceholder = () => {
   fmoLogCandidates.value = []
   fmoSpeakingHistory.value = []
   currentLiveCallsign.value = ''
-  currentRelayName.value = target ? `${source.label} ${target}` : source.label
-  fmoStatus.value = `${source.label} 网络监听入口已添加，接口适配待接入`
-  showNotice(`${source.label} 选项已添加，下一步接入网络监听接口`)
+  const sourceName = sourceDisplayName(source)
+  currentRelayName.value = target ? `${sourceName} ${target}` : sourceName
+  fmoStatus.value = i18nText(
+    `${source.label} 网络监听入口已添加，接口适配待接入`,
+    `${sourceName} monitoring placeholder added; adapter pending.`
+  )
+  showNotice(i18nText(
+    `${source.label} 选项已添加，下一步接入网络监听接口`,
+    `${sourceName} option added; network monitoring adapter is pending.`
+  ))
 }
 
 const refreshMonitorCandidates = () => {
@@ -2472,8 +2519,8 @@ const restartMonitor = ({ immediate = false } = {}) => {
         : fmoConfig.source === 'bm'
           ? `BrandMeister TG${fmoConfig.bmTalkgroup || ''}`
           : currentMonitorSource.value.addressKind === 'network'
-            ? currentMonitorSource.value.label
-            : '当前中继/服务器'
+            ? sourceDisplayName(currentMonitorSource.value)
+            : i18nText('当前中继/服务器', 'Current Repeater / Server')
     startFmoAutoRefresh()
   }
   if (immediate) {
@@ -2489,7 +2536,7 @@ const changeMonitorSource = (event) => {
   if (nextSource === oldSource) return
   const hasStarted = records.value.length > 0 || fmoConfig.autoRefresh || fmoCandidates.value.length > 0
   if (hasStarted) {
-    showNotice('点名活动进行中已切换监听源，当前候选将重新连接获取', 'top')
+    showNotice(i18nText('点名活动进行中已切换监听源，当前候选将重新连接获取', 'Monitor source changed during the activity; candidates will reconnect.'), 'top')
   }
   nextMonitorRequestId()
   resetMonitorRuntimeState()
@@ -2501,7 +2548,7 @@ const submitRecord = () => {
   if (!editingId.value && !assertPublicWebAllowed('add-record')) return
   const callsign = buildRecordCallsign()
   if (!callsign) {
-    showNotice('请先填写呼号')
+    showNotice(i18nText('请先填写呼号', 'Enter a callsign first.'))
     return
   }
 
@@ -2521,7 +2568,7 @@ const submitRecord = () => {
     records.value = records.value.map((record) =>
       record.id === editingId.value ? { ...record, ...payload } : record
     )
-    showNotice('记录已更新')
+    showNotice(i18nText('记录已更新', 'Record updated.'))
   } else {
     records.value = [
       ...records.value,
@@ -2531,7 +2578,7 @@ const submitRecord = () => {
         ...payload
       }
     ]
-    showNotice('已加入点名记录')
+    showNotice(i18nText('已加入点名记录', 'Record added.'))
   }
 
   updateProfile(payload)
@@ -2574,7 +2621,7 @@ const closeRecordEditor = () => {
 const saveRecordEditor = () => {
   const callsign = buildCallsignFromParts(editDraft.prefix, editDraft.callsign)
   if (!callsign) {
-    showNotice('请填写呼号')
+    showNotice(i18nText('请填写呼号', 'Enter a callsign.'))
     return
   }
   const existing = records.value.find((record) => record.id === editingRecordId.value)
@@ -2600,7 +2647,7 @@ const saveRecordEditor = () => {
   )
   updateProfile(payload)
   closeRecordEditor()
-  showNotice('记录已修改')
+  showNotice(i18nText('记录已修改', 'Record saved.'))
 }
 
 const removeRecord = (id) => {
@@ -2608,7 +2655,7 @@ const removeRecord = (id) => {
   selectedRecordIds.value = selectedRecordIds.value.filter((recordId) => recordId !== id)
   if (editingId.value === id) resetForm()
   if (editingRecordId.value === id) closeRecordEditor()
-  showNotice('记录已删除')
+  showNotice(i18nText('记录已删除', 'Record deleted.'))
 }
 
 const toggleAllFilteredRecords = () => {
@@ -2627,16 +2674,16 @@ const removeSelectedRecords = () => {
   const selected = new Set(selectedRecordIds.value)
   records.value = records.value.filter((record) => !selected.has(record.id))
   selectedRecordIds.value = []
-  showNotice('已删除选中记录')
+  showNotice(i18nText('已删除选中记录', 'Selected records deleted.'))
 }
 
 const clearAll = () => {
   if (!records.value.length) return
-  const confirmed = window.confirm('确认清空本次点名记录？建议先导出 Excel 或 JSON 备份。')
+  const confirmed = window.confirm(i18nText('确认清空本次点名记录？建议先导出 Excel 或 JSON 备份。', 'Clear all records in this check-in? Export Excel or JSON first if needed.'))
   if (!confirmed) return
   records.value = []
   resetForm()
-  showNotice('已清空记录')
+  showNotice(i18nText('已清空记录', 'Records cleared.'))
 }
 
 const openSerialEditor = () => {
@@ -2651,12 +2698,12 @@ const closeSerialEditor = () => {
 const applySerialEditor = () => {
   const recordedCount = Number.parseInt(String(serialEditorDraft.value).trim(), 10)
   if (!Number.isInteger(recordedCount) || recordedCount < 0) {
-    showNotice('已记录数量需要填写 0 或正整数')
+    showNotice(i18nText('已记录数量需要填写 0 或正整数', 'Logged count must be 0 or a positive integer.'))
     return
   }
   activityConfig.serialStart = Math.max(1, recordedCount - sortedRecords.value.length + 1)
   closeSerialEditor()
-  showNotice(`下一条记录序号将从 ${nextRecordSerial.value} 开始`)
+  showNotice(i18nText(`下一条记录序号将从 ${nextRecordSerial.value} 开始`, `Next serial number starts from ${nextRecordSerial.value}.`))
 }
 
 const makeRows = () =>
@@ -2807,7 +2854,7 @@ const exportExcel = async () => {
     publicSession.downloads += 1
     persistPublicSession()
   }
-  showNotice('Excel 已导出')
+  showNotice(i18nText('Excel 已导出', 'Excel exported.'))
 }
 
 const writeBlobToHandle = async (handle, blob) => {
@@ -2827,7 +2874,7 @@ const saveLocalExcelFile = async ({ silent = false, allowPicker = true } = {}) =
         suggestedName: filename,
         types: [
           {
-            description: 'Excel 表格',
+            description: i18nText('Excel 表格', 'Excel workbook'),
             accept: {
               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
             }
@@ -2845,12 +2892,12 @@ const saveLocalExcelFile = async ({ silent = false, allowPicker = true } = {}) =
     publicSession.downloads += 1
     persistPublicSession()
   }
-  if (!silent) showNotice('浏览器已下载点名表格')
+  if (!silent) showNotice(i18nText('浏览器已下载点名表格', 'Check-in workbook downloaded by browser.'))
   return true
 }
 
 const saveCheckinToServer = async ({ silent = false } = {}) => {
-  if (!assertPublicWebAllowed('save')) throw new Error('网络版测试限制')
+  if (!assertPublicWebAllowed('save')) throw new Error(i18nText('网络版测试限制', 'Web test limit reached.'))
   const response = await fetch(serverApiPath('/api/checkins'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -2867,15 +2914,15 @@ const saveCheckinToServer = async ({ silent = false } = {}) => {
     })
   })
   const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || `服务器保存失败：HTTP ${response.status}`)
-  if (!data?.ok) throw new Error(data?.error || '服务器保存失败')
+  if (!response.ok) throw new Error(data?.error || i18nText(`服务器保存失败：HTTP ${response.status}`, `Server save failed: HTTP ${response.status}`))
+  if (!data?.ok) throw new Error(data?.error || i18nText('服务器保存失败', 'Server save failed.'))
   if (isPublicWebVersion.value) {
     publicSession.activityId = currentActivityId.value || 'default'
     persistPublicSession()
   }
   serverSaveAvailable.value = true
   autoSaveEnabled.value = true
-  if (!silent) showNotice(`服务器已保存 ${data.recordCount ?? records.value.length} 条记录`)
+  if (!silent) showNotice(i18nText(`服务器已保存 ${data.recordCount ?? records.value.length} 条记录`, `Server saved ${data.recordCount ?? records.value.length} records.`))
   return data
 }
 
@@ -2900,13 +2947,13 @@ const saveExcelFile = async ({ silent = false, allowPicker = true } = {}) => {
       if (!serverSaved || localError?.name !== 'AbortError') throw localError
     }
     if (!silent) autoSaveEnabled.value = true
-    if (!silent && serverSaved && localSaved) showNotice('服务器与本地 Excel 已保存')
-    else if (!silent && serverSaved) showNotice('服务器已保存')
-    else if (!silent && localSaved) showNotice('本地 Excel 已保存')
+    if (!silent && serverSaved && localSaved) showNotice(i18nText('服务器与本地 Excel 已保存', 'Saved to server and local Excel.'))
+    else if (!silent && serverSaved) showNotice(i18nText('服务器已保存', 'Saved to server.'))
+    else if (!silent && localSaved) showNotice(i18nText('本地 Excel 已保存', 'Local Excel saved.'))
   } catch (error) {
     if (error?.name !== 'AbortError') {
       console.error(error)
-      showNotice(error?.message || '保存失败，请重试')
+      showNotice(error?.message || i18nText('保存失败，请重试', 'Save failed. Please try again.'))
     }
     throw error
   } finally {
@@ -2950,7 +2997,7 @@ const createNewActivity = () => {
   if (!assertPublicWebAllowed('new-activity')) return
   if (
     records.value.length &&
-    !window.confirm('当前点名记录会保留在本地历史中。是否新建一个空白点名日志？')
+    !window.confirm(i18nText('当前点名记录会保留在本地历史中。是否新建一个空白点名日志？', 'Current records will remain in local history. Create a new blank check-in log?'))
   ) {
     return
   }
@@ -2976,19 +3023,19 @@ const createNewActivity = () => {
   })
   persist()
   persistActivityConfig()
-  showNotice('已新建空白点名日志')
+  showNotice(i18nText('已新建空白点名日志', 'New blank check-in log created.'))
 }
 
 const exportJson = () => {
   if (!records.value.length) {
-    showNotice('暂无记录可备份')
+    showNotice(i18nText('暂无记录可备份', 'No records to back up.'))
     return
   }
   const blob = new Blob([JSON.stringify(records.value, null, 2)], {
     type: 'application/json;charset=utf-8'
   })
-  downloadBlob(blob, `HAM台网点名备份-${new Date().toISOString().slice(0, 10)}.json`)
-  showNotice('JSON 备份已导出')
+  downloadBlob(blob, `HAM-checkin-backup-${new Date().toISOString().slice(0, 10)}.json`)
+  showNotice(i18nText('JSON 备份已导出', 'JSON backup exported.'))
 }
 
 const importJson = async (event) => {
@@ -3010,9 +3057,9 @@ const importJson = async (event) => {
     mergeProfiles(records.value.map((record) => ({ ...record, lastCheckinAt: record.time })))
     markProfileDirty(records.value.map((record) => record.callsign))
     scheduleSharedProfileSync()
-    showNotice('JSON 备份已导入')
+    showNotice(i18nText('JSON 备份已导入', 'JSON backup imported.'))
   } catch {
-    showNotice('导入失败，请确认是本软件导出的 JSON 文件')
+    showNotice(i18nText('导入失败，请确认是本软件导出的 JSON 文件', 'Import failed. Please use a JSON file exported by this app.'))
   } finally {
     event.target.value = ''
   }
@@ -3057,7 +3104,7 @@ const importDb3 = async (event) => {
         frequency: row.freq || '',
         mode: row.modal || '',
         signal,
-        remarks: [row.linetype, row.lineother, row.op ? `主控 ${row.op}` : '', row.fwq].filter(Boolean).join(' / '),
+        remarks: [row.linetype, row.lineother, row.op ? i18nText(`主控 ${row.op}`, `OP ${row.op}`) : '', row.fwq].filter(Boolean).join(' / '),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }
@@ -3079,10 +3126,10 @@ const importDb3 = async (event) => {
     scheduleSharedProfileSync()
     db.close()
     const callsignCount = new Set(profileEntries.map((profile) => profile.callsign).filter(Boolean)).size
-    showNotice(`已导入 ${importedRecords.length} 条旧库资料，更新 ${callsignCount} 个呼号画像`)
+    showNotice(i18nText(`已导入 ${importedRecords.length} 条旧库资料，更新 ${callsignCount} 个呼号画像`, `Imported ${importedRecords.length} legacy records and updated ${callsignCount} callsign profiles.`))
   } catch (error) {
     console.error(error)
-    showNotice('DB3 导入失败，请确认是该点名软件的数据库文件')
+    showNotice(i18nText('DB3 导入失败，请确认是该点名软件的数据库文件', 'DB3 import failed. Please use a database file from this check-in app.'))
   } finally {
     event.target.value = ''
   }
@@ -3609,7 +3656,7 @@ onUnmounted(() => {
                   v-for="(record, index) in filteredRecords"
                   :key="record.id"
                   class="editable-row"
-                  title="点击修改记录"
+                  :title="i18nText('点击修改记录', 'Click to edit record')"
                   @click="openRecordEditor(record)"
                 >
                   <td>{{ getDisplaySerial(record) }}</td>
@@ -3659,7 +3706,7 @@ onUnmounted(() => {
                     :value="source.value"
                     :class="{ 'emphasized-source-option': isPublicWebVersion && source.emphasized }"
                   >
-                    {{ isPublicWebVersion && source.webLabel ? source.webLabel : source.label }}
+                    {{ monitorSourceOptionLabel(source) }}
                   </option>
                 </select>
               </label>
@@ -3674,7 +3721,7 @@ onUnmounted(() => {
                     type="button"
                     class="input-clear-button"
                     :disabled="!fmoConfig.mmdvmHost"
-                    title="清空 MMDVM 地址"
+                    :title="`${t('clearField')} MMDVM`"
                     @click="clearField(fmoConfig, 'mmdvmHost')"
                   >
                     X
@@ -3689,7 +3736,7 @@ onUnmounted(() => {
                     type="button"
                     class="input-clear-button"
                     :disabled="!fmoConfig.hamboxHost"
-                    title="清空 HAMBOX 地址"
+                    :title="`${t('clearField')} HAMBOX`"
                     @click="clearField(fmoConfig, 'hamboxHost')"
                   >
                     X
@@ -3705,7 +3752,7 @@ onUnmounted(() => {
                     type="button"
                     class="input-clear-button"
                     :disabled="!fmoConfig.bmTalkgroup"
-                    title="清空 BM 通话组"
+                    :title="`${t('clearField')} BM TG`"
                     @click="clearField(fmoConfig, 'bmTalkgroup')"
                   >
                     X
@@ -3723,7 +3770,7 @@ onUnmounted(() => {
                     type="button"
                     class="input-clear-button"
                     :disabled="!fmoConfig.host"
-                    title="清空 FMO 地址"
+                    :title="`${t('clearField')} FMO`"
                     @click="clearField(fmoConfig, 'host')"
                   >
                     X
@@ -3747,14 +3794,14 @@ onUnmounted(() => {
                 :disabled="fmoRefreshing"
                 :title="
                   fmoConfig.source === 'mmdvm'
-                    ? '刷新 MMDVM Last Heard'
+                    ? i18nText('刷新 MMDVM Last Heard', 'Refresh MMDVM Last Heard')
                     : fmoConfig.source === 'hambox'
-                      ? '刷新 HAMBOX Last Heard'
+                      ? i18nText('刷新 HAMBOX Last Heard', 'Refresh HAMBOX Last Heard')
                     : fmoConfig.source === 'bm'
-                      ? '刷新 BrandMeister Last Heard'
+                      ? i18nText('刷新 BrandMeister Last Heard', 'Refresh BrandMeister Last Heard')
                       : currentMonitorSource.addressKind === 'network'
-                        ? `准备接入 ${currentMonitorSource.label} 网络监听`
-                        : '刷新 FMO 候选'
+                        ? i18nText(`准备接入 ${currentMonitorSource.label} 网络监听`, `Preparing ${sourceDisplayName(currentMonitorSource)} network monitoring`)
+                        : i18nText('刷新 FMO 候选', 'Refresh FMO candidates')
                 "
                 @click="refreshMonitorCandidates"
               >
@@ -3852,7 +3899,7 @@ onUnmounted(() => {
           <h2>{{ authorQrTitle }}</h2>
           <button type="button" class="icon-button" :title="t('close')" @click="authorQrOpen = false">X</button>
         </div>
-        <img :src="authorQrCodeUrl" alt="作者微信二维码" />
+        <img :src="authorQrCodeUrl" :alt="i18nText('作者微信二维码', 'Author WeChat QR code')" />
         <p>{{ authorQrHint }}</p>
       </div>
     </div>
@@ -3876,13 +3923,21 @@ onUnmounted(() => {
           </label>
           <label class="field">
             <span>{{ t('cracCertificate') }}</span>
-            <input v-model="profileSyncConfig.cracCertificate" autocomplete="off" placeholder="操作证书号" />
+            <input
+              v-model="profileSyncConfig.cracCertificate"
+              autocomplete="off"
+              :placeholder="i18nText('操作证书号', 'Certificate number')"
+            />
           </label>
         </div>
         <div class="field-row">
           <label class="field">
             <span>{{ t('registrationQth') }}</span>
-            <input v-model="profileSyncConfig.registrationQth" autocomplete="off" placeholder="北京 昌平" />
+            <input
+              v-model="profileSyncConfig.registrationQth"
+              autocomplete="off"
+              :placeholder="i18nText('北京 昌平', 'Beijing Changping')"
+            />
           </label>
           <label class="field">
             <span>{{ t('registrationRepeater') }}</span>
@@ -4006,7 +4061,7 @@ onUnmounted(() => {
                 type="button"
                 class="input-clear-button"
                 :disabled="!editDraft.qth"
-                title="清空 QTH"
+                :title="`${t('clearField')} QTH`"
                 @click="clearField(editDraft, 'qth')"
               >
                 X
