@@ -4,11 +4,11 @@ Applies to: V0.9.01
 
 ## 1. Purpose
 
-HAM Net Check-in Console helps an amateur radio OP station run a check-in session. It combines activity setup, callsign logging, monitor-source candidates, OP transmit indication, Excel export, and callsign profile assistance in one screen.
+HAM Net Check-in Console helps the OP run an amateur radio net check-in session. It combines activity setup, callsign logging, monitor-source candidates, OP transmit indication, Excel export, and callsign profile assistance in one screen.
 
 ## 2. Quick Start
 
-1. Fill in the net activity name, OP callsign, OP QTH, rig, antenna, and power at the top.
+1. Fill in the net activity name, OP callsign, OP QTH, OP rig, OP antenna, and OP power at the top.
 2. Choose a monitor source on the right, enter the host or talkgroup, then click “Refresh”.
 3. Click a station in the waiting queue or recent QSO list to copy it into the entry form.
 4. Review and complete antenna, signal report, notes, and other fields.
@@ -19,7 +19,7 @@ HAM Net Check-in Console helps an amateur radio OP station run a check-in sessio
 
 - Net Activity: identifies this session in saved files and exported logs.
 - OP Call: used by the OP TX indicator.
-- OP QTH, Rig, Antenna, Power: written into the activity record.
+- OP QTH, OP Rig, OP Antenna, OP Power: written into the activity record.
 - Logged counter: click it to set the current count; the next serial number follows automatically.
 - Save: saves the current check-in table.
 - Auto Save: saves automatically when records change.
@@ -57,7 +57,7 @@ Enable “Auto” to refresh candidates periodically. Click any candidate row to
 
 ## 6. OP TX Indicator
 
-The “OP TX” strip shows whether the configured OP callsign is appearing in the active monitor source. It is meant as a quick reminder of the OP station’s transmit state during the net.
+The “OP TX” strip shows whether the configured OP callsign is appearing in the active monitor source. It is meant as a quick reminder of the OP transmit state during the net.
 
 ## 7. Logged Records
 

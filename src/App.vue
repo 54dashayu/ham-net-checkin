@@ -257,7 +257,7 @@ const i18nMessages = {
     enableSync: 'Enable Sync',
     registerHint: 'Submit for author review. After approval, import the verification key to enable shared callsign database sync.',
     aboutTitle: 'About Net Check-in Console',
-    aboutText1: 'HAM Net Check-in Console helps OP stations record amateur radio check-ins. It can pick candidates from FMO, MMDVM, HAMBOX and BM DMR, then export an Excel net log.',
+    aboutText1: 'HAM Net Check-in Console helps the OP record amateur radio check-ins. It can pick candidates from FMO, MMDVM, HAMBOX and BM DMR, then export an Excel net log.',
     aboutText2: 'Contributed by BH1JSS. The web version is mainly for BM DMR testing. Use the desktop app for full local device monitoring.',
     githubProject: 'GitHub',
     contactAuthor: 'Contact',
