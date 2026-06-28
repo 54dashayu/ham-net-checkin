@@ -1,4 +1,5 @@
-import { createServer } from 'node:http'
+import { createServer, request as httpRequest } from 'node:http'
+import { request as httpsRequest } from 'node:https'
 import { createReadStream, promises as fs } from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -25,6 +26,47 @@ const networkLimits = {
 }
 
 const jsonHeaders = { 'content-type': 'application/json; charset=utf-8' }
+
+function createAbortError() {
+  const error = new Error('Aborted')
+  error.name = 'AbortError'
+  return error
+}
+
+function fallbackFetch(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = url instanceof URL ? url : new URL(String(url))
+    const requestFn = parsed.protocol === 'https:' ? httpsRequest : httpRequest
+    const req = requestFn(parsed, { method: options.method || 'GET', headers: options.headers || {} }, (res) => {
+      const chunks = []
+      res.on('data', (chunk) => chunks.push(chunk))
+      res.on('end', () => {
+        const body = Buffer.concat(chunks)
+        resolve({
+          ok: Number(res.statusCode || 0) >= 200 && Number(res.statusCode || 0) < 300,
+          status: Number(res.statusCode || 0),
+          headers: {
+            get(name) {
+              const value = res.headers[String(name).toLowerCase()]
+              return Array.isArray(value) ? value.join(', ') : value || null
+            }
+          },
+          text: async () => body.toString('utf8')
+        })
+      })
+    })
+    req.on('error', reject)
+    if (options.signal) {
+      if (options.signal.aborted) req.destroy(createAbortError())
+      options.signal.addEventListener('abort', () => req.destroy(createAbortError()), {
+        once: true
+      })
+    }
+    req.end()
+  })
+}
+
+const runtimeFetch = globalThis.fetch || fallbackFetch
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -1493,7 +1535,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 9000) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    return await fetch(url, { ...options, signal: controller.signal })
+    return await runtimeFetch(url, { ...options, signal: controller.signal })
   } finally {
     clearTimeout(timer)
   }
