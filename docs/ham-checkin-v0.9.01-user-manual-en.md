@@ -4,11 +4,11 @@ Applies to: V0.9.01
 
 ## 1. Purpose
 
-HAM Net Check-in Console helps an amateur radio net control station run a check-in session. It combines activity setup, callsign logging, monitor-source candidates, control-station transmit indication, Excel export, and callsign profile assistance in one screen.
+HAM Net Check-in Console helps an amateur radio OP station run a check-in session. It combines activity setup, callsign logging, monitor-source candidates, OP transmit indication, Excel export, and callsign profile assistance in one screen.
 
 ## 2. Quick Start
 
-1. Fill in the net activity name, control callsign, control QTH, rig, antenna, and power at the top.
+1. Fill in the net activity name, OP callsign, OP QTH, rig, antenna, and power at the top.
 2. Choose a monitor source on the right, enter the host or talkgroup, then click “Refresh”.
 3. Click a station in the waiting queue or recent QSO list to copy it into the entry form.
 4. Review and complete antenna, signal report, notes, and other fields.
@@ -18,8 +18,8 @@ HAM Net Check-in Console helps an amateur radio net control station run a check-
 ## 3. Top Activity Bar
 
 - Net Activity: identifies this session in saved files and exported logs.
-- Control Call: used by the control TX indicator.
-- Control QTH, Rig, Antenna, Power: written into the activity record.
+- OP Call: used by the OP TX indicator.
+- OP QTH, Rig, Antenna, Power: written into the activity record.
 - Logged counter: click it to set the current count; the next serial number follows automatically.
 - Save: saves the current check-in table.
 - Auto Save: saves automatically when records change.
@@ -55,9 +55,9 @@ The right panel reads recent QSO candidates from the selected source.
 
 Enable “Auto” to refresh candidates periodically. Click any candidate row to copy that station into the left entry form.
 
-## 6. Control TX Indicator
+## 6. OP TX Indicator
 
-The “Control TX” strip shows whether the configured control callsign is appearing in the active monitor source. It is meant as a quick reminder of the control station’s transmit state during the net.
+The “OP TX” strip shows whether the configured OP callsign is appearing in the active monitor source. It is meant as a quick reminder of the OP station’s transmit state during the net.
 
 ## 7. Logged Records
 
@@ -82,7 +82,7 @@ Without registration, local suggestions and local history can still be used.
 
 ## 9. Saving and Export Tips
 
-- Confirm activity and control-station information before the net starts.
+- Confirm activity and OP station information before the net starts.
 - Enable Auto Save for formal check-ins.
 - For long sessions, click Save manually from time to time.
 - After the activity, export Excel and review serial numbers, callsigns, and timestamps.
