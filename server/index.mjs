@@ -40,6 +40,7 @@ const clientEventTypes = new Set([
   'app-start',
   'app-active',
   'excel-export-local',
+  'adif-export-local',
   'sync-toggle',
   'app-version-check'
 ])

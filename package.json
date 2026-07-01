@@ -68,6 +68,7 @@
       "category": "public.app-category.utilities",
       "hardenedRuntime": true,
       "notarize": true,
+      "artifactName": "HAM-Checkin-1.0.01-MacOS.${ext}",
       "extendInfo": {
         "NSLocalNetworkUsageDescription": "HAM 台网点名主控台需要访问局域网内的 MMDVM、HAMBOX 和 FMO 设备，用于读取 Last Heard 与实时点名数据。",
         "NSAppTransportSecurity": {

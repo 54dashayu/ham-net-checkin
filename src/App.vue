@@ -128,6 +128,7 @@ const i18nMessages = {
     selectAll: '全选',
     cancelSelect: '取消',
     deleteSelected: '删除选中',
+    exportAdif: '导出 ADIF',
     serial: '序号',
     callsign: '呼号',
     time: '时间',
@@ -160,11 +161,13 @@ const i18nMessages = {
     enableSync: '开启同步',
     registerHint: '提交后需等待作者在后台审核，通过后获得验证密钥文件。导入验证密钥后，即可开启共享呼号资料库同步。',
     aboutTitle: '关于台网点名主控台',
-    aboutText1: '台网点名主控台用于业余无线电台网活动记录，支持从 FMO、MMDVM、HAMBOX、BM DMR 等监听源选取友台，快速登记呼号、QTH、设备、功率、模式和信号报告，并导出 Excel 台网日志。',
+    aboutText1: '台网点名主控台用于业余无线电台网活动记录，支持从 FMO、MMDVM、HAMBOX、BM DMR 等监听源选取友台，快速登记呼号、QTH、设备、功率、模式和信号报告，并导出 Excel 与 ADIF 台网日志。',
     aboutText2: '本软件由 BH1JSS 机婶婶贡献。网络版仅提供 BM DMR 模式测试，完整监听和本地设备接入建议使用本地版。',
     githubProject: 'GitHub 项目',
     contactAuthor: '联系作者',
     anonymousTelemetry: '允许匿名使用统计',
+    anonymousTelemetryNotice: '此统计仅用于改善软件体验',
+    footerAbout: '关于',
     footerCredit: '台网点名主控台 由 BH1JSS 机婶婶 贡献',
     profileEnabled: '已启用呼号数据库',
     profileDisabled: '启用呼号数据库',
@@ -244,6 +247,7 @@ const i18nMessages = {
     selectAll: 'Select All',
     cancelSelect: 'Cancel',
     deleteSelected: 'Delete selected',
+    exportAdif: 'Export ADIF',
     serial: 'No.',
     callsign: 'Callsign',
     time: 'Time',
@@ -276,11 +280,13 @@ const i18nMessages = {
     enableSync: 'Enable Sync',
     registerHint: 'Submit for author review. After approval, import the verification key to enable shared callsign database sync.',
     aboutTitle: 'About Net Check-in Console',
-    aboutText1: 'HAM Net Check-in Console helps the OP record amateur radio check-ins. It can pick candidates from FMO, MMDVM, HAMBOX and BM DMR, then export an Excel net log.',
+    aboutText1: 'HAM Net Check-in Console helps the OP record amateur radio check-ins. It can pick candidates from FMO, MMDVM, HAMBOX and BM DMR, then export Excel and ADIF net logs.',
     aboutText2: 'Contributed by BH1JSS. The web version is mainly for BM DMR testing. Use the desktop app for full local device monitoring.',
     githubProject: 'GitHub',
     contactAuthor: 'Contact',
     anonymousTelemetry: 'Allow anonymous usage statistics',
+    anonymousTelemetryNotice: '此统计仅用于改善软件体验',
+    footerAbout: 'About',
     footerCredit: 'HAM Net Check-in Console by BH1JSS',
     profileEnabled: 'Callsign DB enabled',
     profileDisabled: 'Enable callsign DB',
@@ -415,7 +421,7 @@ const authorQrOpen = ref(false)
 const desktopDownloadOpen = ref(false)
 const aboutOpen = ref(false)
 const stagedFmoCandidates = ref([])
-const clientTelemetryEnabled = ref(localStorage.getItem(CLIENT_TELEMETRY_KEY) === 'true')
+const clientTelemetryEnabled = ref(localStorage.getItem(CLIENT_TELEMETRY_KEY) !== 'false')
 const profileRegistrationOpen = ref(false)
 const systemClock = ref(new Date())
 const systemClockTimer = ref(null)
@@ -1048,6 +1054,9 @@ const sendClientMetric = (event, extra = {}) => {
   }).catch(() => {})
 }
 const toggleClientTelemetry = () => {
+  if (!clientTelemetryEnabled.value) {
+    window.alert(t('anonymousTelemetryNotice'))
+  }
   localStorage.setItem(CLIENT_TELEMETRY_KEY, clientTelemetryEnabled.value ? 'true' : 'false')
   if (clientTelemetryEnabled.value) {
     sendClientMetric('app-start')
@@ -1185,7 +1194,7 @@ const assertPublicWebAllowed = (action) => {
     return false
   }
   if (action === 'download' && publicSession.downloads >= PUBLIC_WEB_LIMITS.maxDownloads) {
-    showNotice(i18nText('网络版测试仅允许下载 1 次 Excel，请下载本地版继续使用。', 'The web test allows one Excel download. Download the desktop app to continue.'), 'top')
+    showNotice(i18nText('网络版测试仅允许下载 1 次日志文件，请下载本地版继续使用。', 'The web test allows one log file download. Download the desktop app to continue.'), 'top')
     desktopDownloadOpen.value = true
     return false
   }
@@ -2867,6 +2876,90 @@ const getExcelFilename = () => {
   return `${safeTitle || 'HAM台网点名记录'}.xlsx`
 }
 
+const getAdifFilename = () => {
+  const exportTitle = activityConfig.name || getDefaultActivityName()
+  const safeTitle = String(exportTitle).replace(/[\\\\/:*?"<>|\\s]+/g, '').slice(0, 40)
+  return `${safeTitle || 'HAM台网点名记录'}.adi`
+}
+
+const normalizeAdifValue = (value) =>
+  String(value ?? '')
+    .replaceAll('\r', ' ')
+    .replaceAll('\n', ' ')
+    .replaceAll('<', ' ')
+    .replaceAll('>', ' ')
+    .trim()
+
+const adifField = (name, value) => {
+  const text = normalizeAdifValue(value)
+  if (!text) return ''
+  return `<${name}:${Array.from(text).length}>${text}`
+}
+
+const formatAdifTimestamp = (date = new Date()) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+  return `${year}${month}${day} ${hours}${minutes}${seconds}`
+}
+
+const getRecordDate = (value) => {
+  if (!value) return new Date()
+  const text = String(value)
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text)) {
+    const [datePart, timePart = '00:00'] = text.split('T')
+    const [year, month, day] = datePart.split('-').map(Number)
+    const [hour, minute, second = 0] = timePart.split(':').map(Number)
+    return new Date(year, month - 1, day, hour, minute, second || 0)
+  }
+  const date = new Date(text)
+  return Number.isNaN(date.getTime()) ? new Date() : date
+}
+
+const buildAdifContent = () => {
+  const lines = [
+    adifField('ADIF_VER', '3.1.6'),
+    adifField('PROGRAMID', 'HAM Net Check-in'),
+    adifField('PROGRAMVERSION', appVersion),
+    adifField('CREATED_TIMESTAMP', formatAdifTimestamp()),
+    '<EOH>'
+  ]
+  const stationCallsign = normalizeCallsign(activityConfig.controlCallsign)
+  const stationComment = activityConfig.name || getDefaultActivityName()
+  sortedRecords.value.forEach((record, index) => {
+    const date = getRecordDate(record.time)
+    const qsoDate = formatAdifTimestamp(date).slice(0, 8)
+    const timeOn = formatAdifTimestamp(date).slice(9)
+    const signal = normalizeAdifValue(record.signal || '59')
+    const fields = [
+      adifField('CALL', normalizeCallsign(record.callsign)),
+      adifField('STATION_CALLSIGN', stationCallsign),
+      adifField('QSO_DATE', qsoDate),
+      adifField('TIME_ON', timeOn),
+      adifField('MODE', record.mode || 'FM'),
+      adifField('RST_SENT', signal),
+      adifField('RST_RCVD', signal),
+      adifField('COMMENT', 'via HAM Net Check-in'),
+      adifField('QTH', record.qth),
+      adifField('MY_QTH', activityConfig.controlQth),
+      adifField('APP_HAM_CHECKIN_LOGID', String(recordSerialStart.value + index)),
+      adifField('APP_HAM_CHECKIN_ACTIVITY', stationComment),
+      adifField('APP_HAM_CHECKIN_DEVICE', record.device),
+      adifField('APP_HAM_CHECKIN_MY_DEVICE', activityConfig.controlDevice),
+      adifField('APP_HAM_CHECKIN_ANTENNA', record.antenna),
+      adifField('APP_HAM_CHECKIN_MY_ANTENNA', activityConfig.controlAntenna),
+      adifField('APP_HAM_CHECKIN_POWER', record.power),
+      adifField('APP_HAM_CHECKIN_MY_POWER', activityConfig.controlPower),
+      adifField('APP_HAM_CHECKIN_COMMENT_UTF8', record.remarks)
+    ].filter(Boolean)
+    if (fields.length) lines.push(`${fields.join(' ')} <EOR>`)
+  })
+  return `${lines.filter(Boolean).join('\n')}\n`
+}
+
 const buildExcelWorkbook = () => {
   const rows = makeRows()
   const headers = ['序号', '呼号', 'QTH', '设备', '天线', '功率', '方式', '通联时间 (BJT)']
@@ -2977,6 +3070,24 @@ const exportExcel = async () => {
   }
   sendClientMetric('excel-export-local', { localFile: true, silent: false })
   showNotice(i18nText('Excel 已导出', 'Excel exported.'))
+}
+
+const exportAdif = () => {
+  if (!records.value.length) {
+    showNotice(i18nText('暂无记录可导出', 'No records to export.'))
+    return
+  }
+  if (!assertPublicWebAllowed('download')) return
+  const blob = new Blob([buildAdifContent()], {
+    type: 'application/octet-stream;charset=utf-8'
+  })
+  downloadBlob(blob, getAdifFilename())
+  if (isPublicWebVersion.value) {
+    publicSession.downloads += 1
+    persistPublicSession()
+  }
+  sendClientMetric('adif-export-local', { localFile: true, silent: false })
+  showNotice(i18nText('ADIF 已导出', 'ADIF exported.'))
 }
 
 const writeBlobToHandle = async (handle, blob) => {
@@ -3762,6 +3873,10 @@ onUnmounted(() => {
                 <FileSpreadsheet :size="18" />
                 <span>Excel</span>
               </button>
+              <button type="button" class="tool-button" :title="t('exportAdif')" @click="exportAdif">
+                <Download :size="18" />
+                <span>ADIF</span>
+              </button>
               <button type="button" class="tool-button" :title="t('selectAll')" @click="toggleAllFilteredRecords">
                 <span>{{ allFilteredSelected ? t('cancelSelect') : t('selectAll') }}</span>
               </button>
@@ -4381,7 +4496,7 @@ onUnmounted(() => {
         @click="aboutOpen = true"
       >
         <Info :size="18" />
-        {{ t('aboutTitle') }}
+        {{ t('footerAbout') }}
       </button>
       <a class="footer-link" href="https://github.com/54dashayu/ham-net-checkin" target="_blank" rel="noreferrer">
         <svg aria-hidden="true" viewBox="0 0 19 19">
