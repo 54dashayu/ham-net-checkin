@@ -41,6 +41,8 @@ const PROFILE_SYNC_CONFIG_KEY = 'ham-net-checkin-profile-sync-v1'
 const FMO_CONFIG_KEY = 'ham-net-checkin-fmo-config-v1'
 const ACTIVITY_CONFIG_KEY = 'ham-net-checkin-activity-config-v1'
 const LANGUAGE_KEY = 'ham-net-checkin-language-v1'
+const CLIENT_TELEMETRY_KEY = 'ham-net-checkin-client-telemetry-v1'
+const CLIENT_INSTALL_ID_KEY = 'ham-net-checkin-install-id-v1'
 const CONTROL_TX_STALE_MS = {
   bm: 1200,
   hambox: 1200,
@@ -70,12 +72,18 @@ const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || get
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
-const appVersion = 'V0.9.01'
+const appVersion = 'V1.0.01'
 
 const i18nMessages = {
   zh: {
     appTitle: '台网点名主控台',
-    localVersionContact: '本地版请联系作者',
+    localVersionContact: '本地版下载',
+    desktopDownloadTitle: '下载本地版',
+    desktopDownloadHint: '本地版支持完整监听源与本地设备接入。请选择适合系统的版本下载。',
+    desktopDownloadWin64: 'Win64 安装版',
+    desktopDownloadMacOS: 'MacOS 版本',
+    desktopDownloadWin7: 'Win7 64位旧系统版',
+    desktopDownloadChecksum: '下载校验文件',
     recorded: '已记录',
     nextRecord: '下条',
     setRecordedTitle: '点击设置已记录数量，下一条序号自动 +1',
@@ -102,7 +110,9 @@ const i18nMessages = {
     sync: '同步',
     syncing: '同步中',
     register: '注册',
-    waitingConfirm: '等待确认区',
+    waitingConfirm: '备选区',
+    waitingConfirmEmpty: '备选区为空',
+    clearWaitingConfirm: '清空备选区',
     deviceName: '使用设备名称',
     mode: '模式',
     power: '功率',
@@ -154,6 +164,7 @@ const i18nMessages = {
     aboutText2: '本软件由 BH1JSS 机婶婶贡献。网络版仅提供 BM DMR 模式测试，完整监听和本地设备接入建议使用本地版。',
     githubProject: 'GitHub 项目',
     contactAuthor: '联系作者',
+    anonymousTelemetry: '允许匿名使用统计',
     footerCredit: '台网点名主控台 由 BH1JSS 机婶婶 贡献',
     profileEnabled: '已启用呼号数据库',
     profileDisabled: '启用呼号数据库',
@@ -182,7 +193,13 @@ const i18nMessages = {
   },
   en: {
     appTitle: 'Net Check-in Console',
-    localVersionContact: 'Contact author for desktop app',
+    localVersionContact: 'Desktop Download',
+    desktopDownloadTitle: 'Download Desktop App',
+    desktopDownloadHint: 'The desktop app supports full monitor sources and local device access. Choose the build for your system.',
+    desktopDownloadWin64: 'Win64 installer',
+    desktopDownloadMacOS: 'MacOS version',
+    desktopDownloadWin7: 'Win7 64-bit legacy',
+    desktopDownloadChecksum: 'Checksum file',
     recorded: 'Logged',
     nextRecord: 'Next',
     setRecordedTitle: 'Set logged count; next serial number adds 1',
@@ -209,7 +226,9 @@ const i18nMessages = {
     sync: 'Sync',
     syncing: 'Syncing',
     register: 'Register',
-    waitingConfirm: 'Waiting Queue',
+    waitingConfirm: 'Candidate Queue',
+    waitingConfirmEmpty: 'Candidate queue is empty',
+    clearWaitingConfirm: 'Clear candidate queue',
     deviceName: 'Radio / Device',
     mode: 'Mode',
     power: 'Power',
@@ -261,6 +280,7 @@ const i18nMessages = {
     aboutText2: 'Contributed by BH1JSS. The web version is mainly for BM DMR testing. Use the desktop app for full local device monitoring.',
     githubProject: 'GitHub',
     contactAuthor: 'Contact',
+    anonymousTelemetry: 'Allow anonymous usage statistics',
     footerCredit: 'HAM Net Check-in Console by BH1JSS',
     profileEnabled: 'Callsign DB enabled',
     profileDisabled: 'Enable callsign DB',
@@ -295,6 +315,24 @@ const i18nText = (zh, en) => (language.value === 'en' ? en : zh)
 const userManualUrl = computed(() =>
   `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v0.9.01-user-manual-en.html' : 'ham-checkin-v0.9.01-user-manual.html'}`
 )
+const desktopDownloadLinks = computed(() => [
+  {
+    label: t('desktopDownloadWin64'),
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.0.01-Win64-Setup.exe'
+  },
+  {
+    label: t('desktopDownloadMacOS'),
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.0.01-MacOS.dmg'
+  },
+  {
+    label: t('desktopDownloadWin7'),
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.0.01-Win7-Legacy-x64.exe'
+  },
+  {
+    label: t('desktopDownloadChecksum'),
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.0.01.txt'
+  }
+])
 const sourceFieldLabel = (source) =>
   i18nMessages[language.value]?.sourceFieldLabels?.[source.value] || source.fieldLabel
 const sourcePlaceholder = (source) =>
@@ -374,7 +412,10 @@ const excelSaving = ref(false)
 const autoSaveTimer = ref(null)
 const serverSaveAvailable = ref(false)
 const authorQrOpen = ref(false)
+const desktopDownloadOpen = ref(false)
 const aboutOpen = ref(false)
+const stagedFmoCandidates = ref([])
+const clientTelemetryEnabled = ref(localStorage.getItem(CLIENT_TELEMETRY_KEY) === 'true')
 const profileRegistrationOpen = ref(false)
 const systemClock = ref(new Date())
 const systemClockTimer = ref(null)
@@ -401,6 +442,7 @@ const profileSyncBusy = ref(false)
 const profileSyncTimer = ref(null)
 const profileSyncDebounceTimer = ref(null)
 const publicSessionTimer = ref(null)
+const clientTelemetryTimer = ref(null)
 const authorQrTitle = ref(i18nText('联系作者', 'Contact Author'))
 const authorQrHint = ref(i18nText('请使用微信扫码', 'Scan with WeChat'))
 const fileInput = ref(null)
@@ -926,7 +968,8 @@ const rankedFmoCandidates = computed(() =>
   })
 )
 
-const featuredFmoCandidates = computed(() => rankedFmoCandidates.value.slice(0, 4))
+const featuredFmoCandidates = computed(() => stagedFmoCandidates.value)
+const promotedFmoCandidates = computed(() => rankedFmoCandidates.value.slice(0, 6))
 const recentFmoCandidates = computed(() => rankedFmoCandidates.value.slice(0, 20))
 const currentMonitorSource = computed(
   () => monitorSourceByValue[fmoConfig.source] || monitorSourceByValue.fmo
@@ -959,6 +1002,58 @@ const isLocalProfileTestMode = () =>
   window.location.protocol !== 'file:' &&
   (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
   !serverBasePath
+const isReadOnlyBaseProfileMode = () => isLocalProfileTestMode() || isPublicWebVersion.value
+const clientTelemetryApiPath = (path) => (isPublicWebVersion.value ? serverApiPath(path) : sharedProfileApiPath(path))
+const getClientEdition = () => {
+  if (isPublicWebVersion.value) return 'public-web'
+  if (window.location.protocol === 'file:') return 'desktop'
+  if (isLocalWebOrigin()) return 'local-web'
+  return 'desktop-web'
+}
+const createAnonymousInstallId = () => {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID()
+  return `ham-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+const getAnonymousInstallId = () => {
+  const existing = localStorage.getItem(CLIENT_INSTALL_ID_KEY)
+  if (existing) return existing
+  const next = createAnonymousInstallId()
+  localStorage.setItem(CLIENT_INSTALL_ID_KEY, next)
+  return next
+}
+const getClientTelemetryContext = () => ({
+  appVersion,
+  build: import.meta.env.MODE || 'production',
+  platform: navigator.userAgentData?.platform || navigator.platform || '',
+  edition: getClientEdition(),
+  language: language.value,
+  installId: getAnonymousInstallId()
+})
+const sendClientMetric = (event, extra = {}) => {
+  if (!clientTelemetryEnabled.value || isPublicWebVersion.value) return
+  const payload = {
+    event,
+    client: getClientTelemetryContext(),
+    activityId: currentActivityId.value || 'default',
+    controlCallsign: activityConfig.controlCallsign,
+    profileCallsign: profileSyncConfig.registrationCallsign,
+    recordCount: records.value.length,
+    ...extra
+  }
+  fetch(clientTelemetryApiPath('/api/client-events'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+    keepalive: true
+  }).catch(() => {})
+}
+const toggleClientTelemetry = () => {
+  localStorage.setItem(CLIENT_TELEMETRY_KEY, clientTelemetryEnabled.value ? 'true' : 'false')
+  if (clientTelemetryEnabled.value) {
+    sendClientMetric('app-start')
+    sendClientMetric('app-version-check')
+  }
+}
 const publicElapsedMs = ref(0)
 const publicTimeRemainingText = computed(() => {
   const remaining = Math.max(0, PUBLIC_WEB_LIMITS.durationMs - publicElapsedMs.value)
@@ -1070,28 +1165,28 @@ const assertPublicWebAllowed = (action) => {
   if (!isPublicWebVersion.value) return true
   publicElapsedMs.value = Date.now() - publicSession.startedAt
   if (publicWebExpired.value) {
-    showNotice(i18nText('网络版测试已超过 1 小时 15 分钟，本地版请联系作者微信。', 'Web test time exceeded 1h 15m. Contact the author on WeChat for the desktop app.'), 'top')
-    authorQrOpen.value = true
+    showNotice(i18nText('网络版测试已超过 1 小时 15 分钟，请下载本地版继续使用。', 'Web test time exceeded 1h 15m. Download the desktop app to continue.'), 'top')
+    desktopDownloadOpen.value = true
     return false
   }
   if (action === 'add-record' && records.value.length >= PUBLIC_WEB_LIMITS.maxRecords) {
-    showNotice(i18nText('网络版测试最多记录 60 个友台，本地版请联系作者微信。', 'The web test can log up to 60 stations. Contact the author on WeChat for the desktop app.'), 'top')
-    authorQrOpen.value = true
+    showNotice(i18nText('网络版测试最多记录 60 个友台，请下载本地版继续使用。', 'The web test can log up to 60 stations. Download the desktop app to continue.'), 'top')
+    desktopDownloadOpen.value = true
     return false
   }
   if (action === 'save' && records.value.length > PUBLIC_WEB_LIMITS.maxRecords) {
-    showNotice(i18nText('网络版测试最多保存 60 条记录，本地版请联系作者微信。', 'The web test can save up to 60 records. Contact the author on WeChat for the desktop app.'), 'top')
-    authorQrOpen.value = true
+    showNotice(i18nText('网络版测试最多保存 60 条记录，请下载本地版继续使用。', 'The web test can save up to 60 records. Download the desktop app to continue.'), 'top')
+    desktopDownloadOpen.value = true
     return false
   }
   if (action === 'new-activity' && publicSession.activityId) {
-    showNotice(i18nText('网络版测试仅允许 1 个日志文件，本地版请联系作者微信。', 'The web test allows only one log file. Contact the author on WeChat for the desktop app.'), 'top')
-    authorQrOpen.value = true
+    showNotice(i18nText('网络版测试仅允许 1 个日志文件，请下载本地版继续使用。', 'The web test allows only one log file. Download the desktop app to continue.'), 'top')
+    desktopDownloadOpen.value = true
     return false
   }
   if (action === 'download' && publicSession.downloads >= PUBLIC_WEB_LIMITS.maxDownloads) {
-    showNotice(i18nText('网络版测试仅允许下载 1 次 Excel，本地版请联系作者微信。', 'The web test allows one Excel download. Contact the author on WeChat for the desktop app.'), 'top')
-    authorQrOpen.value = true
+    showNotice(i18nText('网络版测试仅允许下载 1 次 Excel，请下载本地版继续使用。', 'The web test allows one Excel download. Download the desktop app to continue.'), 'top')
+    desktopDownloadOpen.value = true
     return false
   }
   return true
@@ -1245,6 +1340,25 @@ const applyProfile = (profile, overwrite = false) => {
   })
 }
 
+const stageFmoCandidate = (candidate) => {
+  if (!candidate?.callsign) return
+  const stagedWithoutCurrent = stagedFmoCandidates.value.filter(
+    (item) => item.id !== candidate.id && item.callsign !== candidate.callsign
+  )
+  stagedFmoCandidates.value = [...stagedWithoutCurrent, candidate].slice(-4)
+  showNotice(i18nText(`已加入备选区 ${candidate.callsign}`, `Queued ${candidate.callsign}`))
+}
+
+const removeStagedFmoCandidate = (candidate) => {
+  stagedFmoCandidates.value = stagedFmoCandidates.value.filter(
+    (item) => item.id !== candidate.id && item.callsign !== candidate.callsign
+  )
+}
+
+const clearStagedFmoCandidates = () => {
+  stagedFmoCandidates.value = []
+}
+
 const chooseFmoCandidate = (candidate) => {
   if (!candidate?.callsign) return
   const { prefix, callsign } = splitRecordCallsign(candidate.callsign)
@@ -1279,6 +1393,11 @@ const chooseFmoCandidate = (candidate) => {
     .filter(Boolean)
     .join(' / ')
   showNotice(i18nText(`已选取 ${candidate.callsign}`, `Selected ${candidate.callsign}`))
+}
+
+const commitStagedFmoCandidate = (candidate) => {
+  chooseFmoCandidate(candidate)
+  removeStagedFmoCandidate(candidate)
 }
 
 const pickKnownValue = (event, key, target = form) => {
@@ -1536,7 +1655,7 @@ const requestProfileRegistration = async () => {
 }
 
 const ensureProfileSyncAuthorized = () => {
-  if (isLocalProfileTestMode()) return true
+  if (isReadOnlyBaseProfileMode()) return true
   if (hasProfileSyncRegistration.value) return true
   profileSyncConfig.enabled = false
   profileSyncStatus.value = i18nText('呼号数据库需导入验证密钥', 'Callsign DB requires a verification key.')
@@ -1568,7 +1687,7 @@ const pullLocalBaseProfilesForTesting = async ({ silent = false } = {}) => {
 
 const pullSharedProfiles = async ({ silent = false } = {}) => {
   if (!profileSyncConfig.enabled) return null
-  if (isLocalProfileTestMode()) return pullLocalBaseProfilesForTesting({ silent })
+  if (isReadOnlyBaseProfileMode()) return pullLocalBaseProfilesForTesting({ silent })
   if (!ensureProfileSyncAuthorized()) return null
   const response = await fetch(sharedProfileApiPath('/api/profiles/pull'), {
     cache: 'no-store',
@@ -1586,7 +1705,7 @@ const pullSharedProfiles = async ({ silent = false } = {}) => {
 
 const pushSharedProfiles = async () => {
   if (!profileSyncConfig.enabled) return null
-  if (isLocalProfileTestMode()) return null
+  if (isReadOnlyBaseProfileMode()) return null
   if (!ensureProfileSyncAuthorized()) return null
   const dirtyProfiles = getDirtyProfilesForSync()
   if (!dirtyProfiles.length) return null
@@ -1640,9 +1759,11 @@ const scheduleSharedProfileSync = () => {
 
 const toggleProfileSync = () => {
   persistProfileSyncConfig()
+  sendClientMetric('sync-toggle', { enabled: profileSyncConfig.enabled })
   if (profileSyncConfig.enabled) {
     if (!ensureProfileSyncAuthorized()) {
       persistProfileSyncConfig()
+      sendClientMetric('sync-toggle', { enabled: false })
       return
     }
     syncSharedProfiles({ silent: false })
@@ -1650,7 +1771,7 @@ const toggleProfileSync = () => {
 }
 
 const enableLocalBaseProfilesForTesting = () => {
-  if (!isLocalProfileTestMode()) return
+  if (!isReadOnlyBaseProfileMode()) return
   profileSyncConfig.enabled = true
   profileSyncStatus.value = i18nText('本地测试基础库加载中', 'Loading local test library')
   persistProfileSyncConfig()
@@ -2854,6 +2975,7 @@ const exportExcel = async () => {
     publicSession.downloads += 1
     persistPublicSession()
   }
+  sendClientMetric('excel-export-local', { localFile: true, silent: false })
   showNotice(i18nText('Excel 已导出', 'Excel exported.'))
 }
 
@@ -2950,6 +3072,7 @@ const saveExcelFile = async ({ silent = false, allowPicker = true } = {}) => {
     if (!silent && serverSaved && localSaved) showNotice(i18nText('服务器与本地 Excel 已保存', 'Saved to server and local Excel.'))
     else if (!silent && serverSaved) showNotice(i18nText('服务器已保存', 'Saved to server.'))
     else if (!silent && localSaved) showNotice(i18nText('本地 Excel 已保存', 'Local Excel saved.'))
+    if (localSaved) sendClientMetric('excel-export-local', { localFile: true, silent })
   } catch (error) {
     if (error?.name !== 'AbortError') {
       console.error(error)
@@ -3221,7 +3344,7 @@ onMounted(() => {
   loadDirtyProfiles()
   loadProfiles()
   enableLocalBaseProfilesForTesting()
-  if (!isLocalProfileTestMode() && profileSyncConfig.enabled) syncSharedProfiles({ silent: true })
+  if (!isReadOnlyBaseProfileMode() && profileSyncConfig.enabled) syncSharedProfiles({ silent: true })
   loadFmoConfig()
   loadActivityConfig()
   publicSessionTimer.value = window.setInterval(() => {
@@ -3233,6 +3356,11 @@ onMounted(() => {
   systemClockTimer.value = window.setInterval(() => {
     systemClock.value = new Date()
   }, 1000)
+  sendClientMetric('app-start')
+  sendClientMetric('app-version-check')
+  clientTelemetryTimer.value = window.setInterval(() => {
+    sendClientMetric('app-active')
+  }, 10 * 60 * 1000)
   startFmoAutoRefresh()
 })
 
@@ -3245,6 +3373,7 @@ onUnmounted(() => {
   window.clearTimeout(autoSaveTimer.value)
   window.clearTimeout(profileSyncDebounceTimer.value)
   window.clearInterval(systemClockTimer.value)
+  window.clearInterval(clientTelemetryTimer.value)
   closeFmoClient()
 })
 </script>
@@ -3253,7 +3382,7 @@ onUnmounted(() => {
   <main class="app-shell" :class="{ 'has-public-bar': isPublicWebVersion }">
     <div v-if="isPublicWebVersion" class="public-limit-bar">
       <span>{{ publicWebLimitText }}</span>
-      <button type="button" @click="authorQrOpen = true">{{ t('localVersionContact') }}</button>
+      <button type="button" @click="desktopDownloadOpen = true">{{ t('localVersionContact') }}</button>
     </div>
     <section class="activity-band">
       <div class="brand-block">
@@ -3433,18 +3562,44 @@ onUnmounted(() => {
           </div>
 
         <div class="inline-featured-grid">
-          <button
+          <div class="inline-featured-head">
+            <span>{{ t('waitingConfirm') }}</span>
+            <button
+              type="button"
+              class="inline-featured-clear"
+              :disabled="!featuredFmoCandidates.length"
+              :title="t('clearWaitingConfirm')"
+              @click="clearStagedFmoCandidates"
+            >
+              X
+            </button>
+          </div>
+          <div
             v-for="candidate in featuredFmoCandidates"
             :key="candidate.id"
-            type="button"
             class="inline-featured-card"
             :class="{ live: candidate.isSpeaking }"
-            @click="chooseFmoCandidate(candidate)"
+            role="button"
+            tabindex="0"
+            :aria-label="i18nText('双击卡片录入', 'Double-click card to enter')"
+            :title="i18nText('双击卡片录入', 'Double-click card to enter')"
+            @dblclick="commitStagedFmoCandidate(candidate)"
+            @keydown.enter.prevent="commitStagedFmoCandidate(candidate)"
+            @keydown.space.prevent="commitStagedFmoCandidate(candidate)"
           >
             <strong>{{ candidate.callsign }}</strong>
             <span>{{ candidate.qth || candidate.grid || '-' }}</span>
-          </button>
-          <div v-if="!featuredFmoCandidates.length" class="inline-featured-empty">{{ t('waitingConfirm') }}</div>
+            <em class="inline-featured-tooltip">{{ i18nText('双击卡片录入', 'Double-click card to enter') }}</em>
+            <button
+              type="button"
+              class="inline-featured-card-remove"
+              :title="`${t('clearField')} ${candidate.callsign}`"
+              @click.stop="removeStagedFmoCandidate(candidate)"
+            >
+              X
+            </button>
+          </div>
+          <div v-if="!featuredFmoCandidates.length" class="inline-featured-empty">{{ t('waitingConfirmEmpty') }}</div>
         </div>
 
           <div class="status-lines">
@@ -3836,8 +3991,8 @@ onUnmounted(() => {
                 <tr
                   v-for="candidate in recentFmoCandidates"
                   :key="candidate.id"
-                  :class="{ live: candidate.isSpeaking }"
-                  @click="chooseFmoCandidate(candidate)"
+                  :class="{ live: candidate.isSpeaking, promoted: promotedFmoCandidates.some((item) => item.id === candidate.id) }"
+                  @click="stageFmoCandidate(candidate)"
                 >
                   <td><strong class="callsign">{{ candidate.callsign }}</strong></td>
                   <td>{{ formatFullDateTime(candidate.time) }}</td>
@@ -3901,6 +4056,28 @@ onUnmounted(() => {
         </div>
         <img :src="authorQrCodeUrl" :alt="i18nText('作者微信二维码', 'Author WeChat QR code')" />
         <p>{{ authorQrHint }}</p>
+      </div>
+    </div>
+
+    <div v-if="desktopDownloadOpen" class="modal-backdrop compact-modal" @click.self="desktopDownloadOpen = false">
+      <div class="desktop-download-modal">
+        <div class="modal-head">
+          <h2>{{ t('desktopDownloadTitle') }}</h2>
+          <button type="button" class="icon-button" :title="t('close')" @click="desktopDownloadOpen = false">X</button>
+        </div>
+        <p class="modal-hint">{{ t('desktopDownloadHint') }}</p>
+        <div class="desktop-download-links">
+          <a
+            v-for="link in desktopDownloadLinks"
+            :key="link.href"
+            class="desktop-download-link"
+            :href="link.href"
+            target="_blank"
+            rel="noopener"
+          >
+            {{ link.label }}
+          </a>
+        </div>
       </div>
     </div>
 
@@ -3981,6 +4158,10 @@ onUnmounted(() => {
         <p>
           {{ t('aboutText2') }}
         </p>
+        <label class="telemetry-toggle">
+          <input v-model="clientTelemetryEnabled" type="checkbox" @change="toggleClientTelemetry" />
+          <span>{{ t('anonymousTelemetry') }}</span>
+        </label>
         <div class="about-actions">
           <a class="footer-link" href="https://github.com/54dashayu/ham-net-checkin" target="_blank" rel="noreferrer">
             <svg aria-hidden="true" viewBox="0 0 19 19">

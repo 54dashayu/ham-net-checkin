@@ -10,7 +10,7 @@ npm run build
 npm run desktop
 ```
 
-## 生成 Win64 EXE
+## 生成 Win64 安装包
 
 推荐通过 GitHub Actions 的 Windows runner 构建：
 
@@ -29,6 +29,8 @@ npm run dist:win
 
 - NSIS 安装包：适合普通用户安装。
 - Portable 便携版：适合免安装测试。
+
+当前默认 `npm run dist:win` 生成 NSIS 安装包和 `win-unpacked` 目录；如需免安装测试包，使用 `npm run dist:win:portable`。
 
 ## 注意
 

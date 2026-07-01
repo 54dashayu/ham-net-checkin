@@ -1,7 +1,7 @@
 {
   "name": "ham-net-checkin",
   "private": true,
-  "version": "0.9.1",
+  "version": "1.0.1",
   "productName": "HAM 台网点名主控台",
   "type": "module",
   "main": "electron/main.mjs",
@@ -12,7 +12,8 @@
     "profiles:build": "node scripts/build-base-profiles.mjs",
     "profiles:audit": "node scripts/audit-base-profiles.mjs",
     "desktop": "npm run build && electron .",
-    "dist:win": "npm run build && electron-builder --win portable dir --x64",
+    "dist:win": "npm run build && electron-builder --win nsis dir --x64",
+    "dist:win:portable": "npm run build && electron-builder --win portable dir --x64",
     "preview": "vite preview",
     "serve": "node server/index.mjs",
     "dist:mac": "npm run build && electron-builder --mac dmg --x64",
@@ -39,7 +40,7 @@
       "icon": "build/icon.ico",
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
@@ -51,6 +52,15 @@
           ]
         }
       ]
+    },
+    "nsis": {
+      "artifactName": "HAM-Checkin-1.0.01-Win64-Setup.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "HAM 台网点名主控台"
     },
     "mac": {
       "target": "dmg",
