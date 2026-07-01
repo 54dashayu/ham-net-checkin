@@ -16,28 +16,31 @@
     ul, ol { padding-left: 1.35em; }
     .version { opacity: .86; margin: 0; }
     .tip { background: #eefaf3; border-left: 4px solid #0d8f4f; padding: 12px 14px; border-radius: 10px; }
+    .lang-switch { position: fixed; top: 18px; right: 18px; z-index: 10; color: #08733d; background: rgba(255, 255, 255, .94); border: 1px solid #cfe5d8; border-radius: 999px; box-shadow: 0 8px 24px rgba(16, 70, 44, .16); padding: 8px 14px; font-size: 14px; font-weight: 700; text-decoration: none; }
+    .lang-switch:hover { background: white; border-color: #0d8f4f; }
   </style>
 </head>
 <body>
+  <a class="lang-switch" href="./ham-checkin-v0.9.01-user-manual.html" lang="zh-CN">中文</a>
   <header>
     <h1>HAM Net Check-in Console User Manual</h1>
-    <p class="version">Applies to: V0.9.01</p>
+    <p class="version">Applies to: V1.0.01</p>
   </header>
   <main>
     <article>
       <p class="tip">This manual focuses on how to use the software. Download, checksum, and release information should be checked on the download page.</p>
 
       <h2>1. Purpose</h2>
-      <p>HAM Net Check-in Console helps the OP run an amateur radio net check-in session. It combines activity setup, callsign logging, monitor-source candidates, OP transmit indication, Excel export, and callsign profile assistance in one screen.</p>
+      <p>HAM Net Check-in Console helps the OP run an amateur radio net check-in session. It combines activity setup, callsign logging, monitor-source candidates, OP transmit indication, Excel / ADIF export, anonymous usage-statistics settings, and callsign profile assistance in one screen.</p>
 
       <h2>2. Quick Start</h2>
       <ol>
         <li>Fill in the net activity name, OP callsign, OP QTH, OP rig, OP antenna, and OP power at the top.</li>
         <li>Choose a monitor source on the right, enter the host or talkgroup, then click “Refresh”.</li>
-        <li>Click a station in the waiting queue or recent QSO list to copy it into the entry form.</li>
+        <li>Click a station in the recent QSO list to add it to the candidate queue. Double-click a candidate card to copy it into the callsign entry area and remove that card.</li>
         <li>Review and complete antenna, signal report, notes, and other fields.</li>
         <li>Click “Add Record” to save the check-in to the main list.</li>
-        <li>At the end of the net, click “Excel” to export the log.</li>
+        <li>At the end of the net, click “Excel” or “ADIF” to export the log.</li>
       </ol>
 
       <h2>3. Top Activity Bar</h2>
@@ -53,10 +56,20 @@
       <h2>4. Adding a Record</h2>
       <p>The left entry panel logs one station. Callsign is required. QTH, device, mode, power, signal report, antenna, and notes can be filled according to the actual contact. Click “Add Record” to write it to the main list; while editing an existing row, the button becomes “Save Changes”.</p>
 
+      <h2>4.1 Candidate Queue</h2>
+      <p>The candidate queue is empty by default and is used to hold stations that may be logged shortly.</p>
+      <ul>
+        <li>The right recent QSO list highlights the latest 6 callsigns with a different background.</li>
+        <li>Click a candidate row on the right to add it to the queue. The queue shows up to 4 cards, and newer cards are placed to the right.</li>
+        <li>Double-click a candidate card to copy the station into the entry area and remove that card.</li>
+        <li>Each card has an X button for removing that card. The X in the queue header clears all queued candidates.</li>
+        <li>Hovering over a candidate card shows “Double-click card to enter”.</li>
+      </ul>
+
       <h2>5. Monitor Sources</h2>
       <ul>
         <li>FMO: enter the FMO host and choose ws or wss.</li>
-        <li>MMDVM: enter the MMDVM host to read Last Heard.</li>
+        <li>MMDVM: enter the MMDVM host to read Last Heard. If the local MMDVM source has both TS1 and TS2, use the “Slot” selector: “All / TS1 / TS2”. Selecting TS1 or TS2 only shows callsigns from the corresponding timeslot.</li>
         <li>HAMBOX: enter the HAMBOX host to read recent activity.</li>
         <li>BM DMR: enter the BrandMeister talkgroup.</li>
         <li>Other network sources: placeholders are reserved for future support.</li>
@@ -73,6 +86,7 @@
         <li>Select All / Cancel: selects or clears the current filtered records.</li>
         <li>Delete selected: removes checked records.</li>
         <li>Excel: exports the current log.</li>
+        <li>ADIF: exports an ADIF log. Each record is saved as one QSO between the station callsign and the OP callsign for use in ADIF-compatible logging software.</li>
       </ul>
 
       <h2>8. Callsign Database</h2>
@@ -84,9 +98,16 @@
         <li>Enable Auto Save for formal check-ins.</li>
         <li>For long sessions, click Save manually from time to time.</li>
         <li>After the activity, export Excel and review serial numbers, callsigns, and timestamps.</li>
+        <li>Export ADIF as well if you need to exchange data with standard radio logging software.</li>
       </ul>
 
-      <h2>10. Common Actions</h2>
+      <h2>10. About and Anonymous Statistics</h2>
+      <ul>
+        <li>The footer “About” button opens software information, project links, and author contact options.</li>
+        <li>Anonymous usage statistics are enabled by default and are only used to improve the software experience. If the user tries to disable them, the app shows “This statistic is only used to improve the software experience.”</li>
+      </ul>
+
+      <h2>11. Common Actions</h2>
       <ul>
         <li>Start over: click “New”.</li>
         <li>Change serial start: click the logged counter at the top.</li>

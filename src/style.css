@@ -918,6 +918,12 @@ h2 {
   min-width: 0;
 }
 
+.fmo-config.compact.has-timeslot {
+  flex-basis: 680px;
+  grid-template-columns: minmax(76px, 88px) minmax(124px, 154px) minmax(190px, 1fr) 64px 74px;
+  max-width: 760px;
+}
+
 .fmo-config .tool-button,
 .fmo-config .tool-button span {
   min-height: 34px;
@@ -935,6 +941,16 @@ h2 {
 
 .source-field {
   min-width: 0;
+}
+
+.timeslot-field {
+  min-width: 0;
+}
+
+.timeslot-field select {
+  min-width: 0;
+  padding-left: 9px;
+  padding-right: 22px;
 }
 
 .source-field select option {

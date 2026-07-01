@@ -93,12 +93,14 @@ function parseLastHeardRows(doc) {
       const time = valueAt(row, headers, [/时间/, /time/i, /date/i])
       const target = valueAt(row, headers, [/目标/, /target/i, /reflector/i, /talk\s*group/i])
       const mode = valueAt(row, headers, [/模式/, /mode/i]) || 'MMDVM'
+      const timeslot = valueAt(row, headers, [/时隙/, /^ts$/i, /time\s*slot/i, /slot/i]) || mode.match(/\bTS\s*[12]\b/i)?.[0] || ''
       const duration = valueAt(row, headers, [/时长/, /dur/i, /duration/i])
       candidates.push({
         callsign,
         timeText: time,
         target,
         mode,
+        timeslot,
         duration,
         rawText: [...row.cells].map(textOf).join(' | ')
       })

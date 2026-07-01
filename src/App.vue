@@ -139,6 +139,8 @@ const i18nMessages = {
     selected: '选',
     noRecords: '暂无记录',
     monitorSource: '监听源',
+    mmdvmTimeslot: '时隙',
+    mmdvmTimeslotAll: '全部',
     protocol: '协议',
     auto: '自动',
     refresh: '刷新',
@@ -258,6 +260,8 @@ const i18nMessages = {
     selected: 'Sel.',
     noRecords: 'No records',
     monitorSource: 'Source',
+    mmdvmTimeslot: 'Slot',
+    mmdvmTimeslotAll: 'All',
     protocol: 'Protocol',
     auto: 'Auto',
     refresh: 'Refresh',
@@ -478,10 +482,16 @@ const monitorRequestId = ref(0)
 const currentLiveCallsign = ref('')
 const previousMonitorSource = ref('fmo')
 const bmDeviceCache = new Map()
+const mmdvmTimeslotTargets = reactive({
+  host: '',
+  TS1: '',
+  TS2: ''
+})
 const fmoConfig = reactive({
   source: 'fmo',
   host: '',
   mmdvmHost: DEFAULT_MMDVM_HOST,
+  mmdvmTimeslot: 'all',
   hamboxHost: DEFAULT_HAMBOX_HOST,
   bmTalkgroup: '46001',
   networkTarget: '',
@@ -502,6 +512,7 @@ const activityConfig = reactive({
 const modeOptions = ['FM', 'SSB', 'CW', 'DMR', 'C4FM', 'D-STAR', 'FT8']
 const quickPowerOptions = ['5W', '10W', '25W', '50W']
 const FIRST_TIME_REMARK = '首次参与'
+const mmdvmTimeslotOptions = ['all', 'TS1', 'TS2']
 const monitorSourceOptions = [
   {
     value: 'fmo',
@@ -1303,6 +1314,7 @@ const loadFmoConfig = () => {
       source: savedSource,
       host: saved.host || '',
       mmdvmHost: !saved.mmdvmHost || saved.mmdvmHost === LEGACY_DEFAULT_MMDVM_HOST ? DEFAULT_MMDVM_HOST : saved.mmdvmHost,
+      mmdvmTimeslot: mmdvmTimeslotOptions.includes(saved.mmdvmTimeslot) ? saved.mmdvmTimeslot : 'all',
       hamboxHost: saved.hamboxHost || DEFAULT_HAMBOX_HOST,
       bmTalkgroup: saved.bmTalkgroup || '46001',
       networkTarget: saved.networkTarget || '',
@@ -1316,6 +1328,7 @@ const loadFmoConfig = () => {
       source: 'fmo',
       host: '',
       mmdvmHost: DEFAULT_MMDVM_HOST,
+      mmdvmTimeslot: 'all',
       hamboxHost: DEFAULT_HAMBOX_HOST,
       bmTalkgroup: '46001',
       networkTarget: '',
@@ -2041,6 +2054,7 @@ const normalizeMmdvmQso = (item, index, targetName = '') => {
   const callsign = normalizeCallsign(item.callsign || '')
   if (!callsign) return null
   const profile = profileByCallsign.value.get(callsign)
+  const timeslot = normalizeMmdvmTimeslot(item.timeslot)
   return {
     id: `mmdvm-${item.timeText || index}-${callsign}`,
     callsign,
@@ -2054,10 +2068,21 @@ const normalizeMmdvmQso = (item, index, targetName = '') => {
     mode: item.mode || profile?.mode || 'MMDVM',
     comment: item.target || targetName || item.rawText || '',
     relayName: targetName,
-    sourceLabel: 'MMDVM',
+    sourceLabel: timeslot ? `MMDVM ${timeslot}` : 'MMDVM',
     isSpeaking: false,
+    timeslot,
     raw: item
   }
+}
+
+const normalizeMmdvmTimeslot = (value) => {
+  const text = String(value || '').toUpperCase().replace(/\s+/g, '')
+  if (!text) return ''
+  if (/TS?1|SLOT1|时隙1/.test(text)) return 'TS1'
+  if (/TS?2|SLOT2|时隙2/.test(text)) return 'TS2'
+  if (text === '1') return 'TS1'
+  if (text === '2') return 'TS2'
+  return ''
 }
 
 const normalizeHamboxQso = (item, index, targetName = '') => {
@@ -2500,9 +2525,26 @@ const refreshMmdvmCandidates = async () => {
     fmoStatus.value = i18nText('读取 MMDVM Last Heard', 'Reading MMDVM Last Heard')
     const result = await fetchMmdvmLastHeard(host)
     if (!isCurrentMonitorRequest(requestId, 'mmdvm')) return
-    currentRelayName.value = result.target || result.rows[0]?.target || 'MMDVM Last Heard'
-    fmoCandidates.value = result.rows
-      .map((row, index) => normalizeMmdvmQso(row, index, result.target || result.rows[0]?.target))
+    const selectedTimeslot = fmoConfig.mmdvmTimeslot === 'all' ? '' : fmoConfig.mmdvmTimeslot
+    const timeslotRows = result.rows.filter(
+      (row) => !selectedTimeslot || normalizeMmdvmTimeslot(row.timeslot) === selectedTimeslot
+    )
+    if (mmdvmTimeslotTargets.host !== host) {
+      mmdvmTimeslotTargets.host = host
+      mmdvmTimeslotTargets.TS1 = ''
+      mmdvmTimeslotTargets.TS2 = ''
+    }
+    if (selectedTimeslot) {
+      const detectedTarget = timeslotRows.find((row) => row.target)?.target || ''
+      if (detectedTarget && !mmdvmTimeslotTargets[selectedTimeslot]) {
+        mmdvmTimeslotTargets[selectedTimeslot] = detectedTarget
+      }
+      currentRelayName.value = mmdvmTimeslotTargets[selectedTimeslot] || `${selectedTimeslot} Last Heard`
+    } else {
+      currentRelayName.value = 'MMDVM Last Heard'
+    }
+    fmoCandidates.value = timeslotRows
+      .map((row, index) => normalizeMmdvmQso(row, index, row.target || currentRelayName.value))
       .filter(Boolean)
       .slice(0, 20)
     syncControlTxFromTopCandidate()
@@ -3411,6 +3453,7 @@ watch(
     fmoConfig.source,
     fmoConfig.host,
     fmoConfig.mmdvmHost,
+    fmoConfig.mmdvmTimeslot,
     fmoConfig.hamboxHost,
     fmoConfig.bmTalkgroup,
     fmoConfig.networkTarget,
@@ -3965,7 +4008,18 @@ onUnmounted(() => {
               <h2>{{ currentRelayName }}</h2>
               <p>{{ fmoStatus }}</p>
             </div>
-            <div class="fmo-config" :class="{ compact: fmoConfig.source !== 'fmo' }">
+            <div
+              class="fmo-config"
+              :class="{ compact: fmoConfig.source !== 'fmo', 'has-timeslot': fmoConfig.source === 'mmdvm' }"
+            >
+              <label v-if="fmoConfig.source === 'mmdvm'" class="field timeslot-field">
+                <span>{{ t('mmdvmTimeslot') }}</span>
+                <select v-model="fmoConfig.mmdvmTimeslot">
+                  <option value="all">{{ t('mmdvmTimeslotAll') }}</option>
+                  <option value="TS1">TS1</option>
+                  <option value="TS2">TS2</option>
+                </select>
+              </label>
               <label class="field source-field">
                 <span>{{ t('monitorSource') }}</span>
                 <select

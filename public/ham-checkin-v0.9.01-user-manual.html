@@ -16,28 +16,31 @@
     ul, ol { padding-left: 1.35em; }
     .version { opacity: .86; margin: 0; }
     .tip { background: #eefaf3; border-left: 4px solid #0d8f4f; padding: 12px 14px; border-radius: 10px; }
+    .lang-switch { position: fixed; top: 18px; right: 18px; z-index: 10; color: #08733d; background: rgba(255, 255, 255, .94); border: 1px solid #cfe5d8; border-radius: 999px; box-shadow: 0 8px 24px rgba(16, 70, 44, .16); padding: 8px 14px; font-size: 14px; font-weight: 700; text-decoration: none; }
+    .lang-switch:hover { background: white; border-color: #0d8f4f; }
   </style>
 </head>
 <body>
+  <a class="lang-switch" href="./ham-checkin-v0.9.01-user-manual-en.html" lang="en">English</a>
   <header>
     <h1>HAM 台网点名主控台使用说明</h1>
-    <p class="version">适用版本：V0.9.01</p>
+    <p class="version">适用版本：V1.0.01</p>
   </header>
   <main>
     <article>
       <p class="tip">本说明书只关注软件使用方法；下载、校验和发布信息请以下载页为准。</p>
 
       <h2>1. 软件用途</h2>
-      <p>HAM 台网点名主控台用于业余无线电台网点名。主控可在一个界面中完成活动信息设置、友台呼号登记、监听源候选读取、主控发射提示、Excel 日志导出和呼号资料辅助补全。</p>
+      <p>HAM 台网点名主控台用于业余无线电台网点名。主控可在一个界面中完成活动信息设置、友台呼号登记、监听源候选读取、主控发射提示、Excel / ADIF 日志导出、匿名使用统计设置和呼号资料辅助补全。</p>
 
       <h2>2. 快速开始</h2>
       <ol>
         <li>在顶部填写台网活动名称、主控呼号、主控 QTH、主控设备、主控天线和主控功率。</li>
         <li>在右侧选择监听源，填写地址或通话组，点击“刷新”。</li>
-        <li>从“等待确认区”或右侧最近通联列表点击友台，自动带入呼号、QTH、设备、功率和模式。</li>
+        <li>从右侧最近通联列表单击友台，可加入左侧备选区；在备选区双击卡片可带入呼号输入区并移除该备选卡片。</li>
         <li>检查并补充天线、信号报告、备注等信息。</li>
         <li>点击“添加记录”写入主列表。</li>
-        <li>活动结束后点击“Excel”导出点名日志。</li>
+        <li>活动结束后点击“Excel”或“ADIF”导出点名日志。</li>
       </ol>
 
       <h2>3. 顶部活动栏</h2>
@@ -53,10 +56,20 @@
       <h2>4. 添加记录</h2>
       <p>左侧录入区用于登记单个友台。呼号为必填；QTH、设备、模式、功率、信号报告、天线和备注可按实际通联情况填写。点击“添加记录”后进入主列表；编辑已有记录时按钮会变为“保存修改”。</p>
 
+      <h2>4.1 备选区</h2>
+      <p>备选区默认为空，用于临时放置需要稍后登记的友台。</p>
+      <ul>
+        <li>右侧最近通联列表中置顶显示最近 6 个呼号，背景色与普通记录区分。</li>
+        <li>单击右侧候选行可加入备选区；备选区最多显示 4 张卡片，后加入的卡片在右侧。</li>
+        <li>双击备选区卡片可将呼号和资料带入录入区，并自动删除该备选卡片。</li>
+        <li>每张备选卡片右上角有 X，可单独删除；备选区右上角 X 可清空全部备选。</li>
+        <li>鼠标悬浮在备选卡片上会提示“双击卡片录入”。</li>
+      </ul>
+
       <h2>5. 监听源使用</h2>
       <ul>
         <li>FMO：填写 FMO 地址，并选择 ws 或 wss 协议。</li>
-        <li>MMDVM：填写 MMDVM 主机地址，读取 Last Heard。</li>
+        <li>MMDVM：填写 MMDVM 主机地址，读取 Last Heard。本地 MMDVM 如同时具有 TS1、TS2 时隙，可在“时隙”中选择“全部 / TS1 / TS2”。选择 TS1 或 TS2 时只显示对应时隙的呼号。</li>
         <li>HAMBOX：填写 HAMBOX 地址，读取最近通联。</li>
         <li>BM DMR：填写 BrandMeister 通话组。</li>
         <li>其他网络源：界面已预留，后续逐步接入。</li>
@@ -73,6 +86,7 @@
         <li>全选 / 取消：批量选择当前筛选结果。</li>
         <li>删除选中：删除已勾选记录。</li>
         <li>Excel：导出当前点名日志。</li>
+        <li>ADIF：导出 ADIF 格式日志，每条记录按友台呼号与主控呼号的一次通联保存，便于导入支持 ADIF 的日志软件。</li>
       </ul>
 
       <h2>8. 呼号资料库</h2>
@@ -84,9 +98,16 @@
         <li>正式点名前建议开启自动保存。</li>
         <li>长时间活动中可定期手动点击“保存”。</li>
         <li>活动结束后导出 Excel，并检查序号、呼号和时间是否完整。</li>
+        <li>如需要和通用电台日志软件交换数据，可同时导出 ADIF。</li>
       </ul>
 
-      <h2>10. 常见操作</h2>
+      <h2>10. 关于与匿名统计</h2>
+      <ul>
+        <li>页脚“关于”按钮可打开软件信息、项目链接和作者联系方式。</li>
+        <li>匿名使用统计默认开启，仅用于改善软件体验；当用户尝试关闭时，软件会提示“此统计仅用于改善软件体验”。</li>
+      </ul>
+
+      <h2>11. 常见操作</h2>
       <ul>
         <li>重新开始活动：点击“新建”。</li>
         <li>修改序号起点：点击顶部“已记录”计数卡片。</li>
