@@ -55,6 +55,9 @@ const PUBLIC_WEB_LIMITS = {
   maxRecords: 60,
   maxDownloads: 1
 }
+const DEFAULT_MMDVM_HOST = '192.168.31.119'
+const LEGACY_DEFAULT_MMDVM_HOST = '192.168.3.65'
+const DEFAULT_HAMBOX_HOST = '192.168.31.120'
 const PUBLIC_WEB_SESSION_KEY = 'ham-net-checkin-public-session-v1'
 const initialActivityId = new URLSearchParams(window.location.search).get('activity') || ''
 const currentActivityId = ref(initialActivityId)
@@ -478,8 +481,8 @@ const bmDeviceCache = new Map()
 const fmoConfig = reactive({
   source: 'fmo',
   host: '',
-  mmdvmHost: '192.168.3.65',
-  hamboxHost: '192.168.31.120',
+  mmdvmHost: DEFAULT_MMDVM_HOST,
+  hamboxHost: DEFAULT_HAMBOX_HOST,
   bmTalkgroup: '46001',
   networkTarget: '',
   protocol: 'ws',
@@ -511,7 +514,7 @@ const monitorSourceOptions = [
     value: 'mmdvm',
     label: 'MMDVM',
     fieldLabel: 'MMDVM 地址',
-    placeholder: '192.168.3.65',
+    placeholder: DEFAULT_MMDVM_HOST,
     addressKind: 'mmdvm'
   },
   {
@@ -1299,8 +1302,8 @@ const loadFmoConfig = () => {
     Object.assign(fmoConfig, {
       source: savedSource,
       host: saved.host || '',
-      mmdvmHost: saved.mmdvmHost || '192.168.3.65',
-      hamboxHost: saved.hamboxHost || '192.168.31.120',
+      mmdvmHost: !saved.mmdvmHost || saved.mmdvmHost === LEGACY_DEFAULT_MMDVM_HOST ? DEFAULT_MMDVM_HOST : saved.mmdvmHost,
+      hamboxHost: saved.hamboxHost || DEFAULT_HAMBOX_HOST,
       bmTalkgroup: saved.bmTalkgroup || '46001',
       networkTarget: saved.networkTarget || '',
       protocol: saved.protocol || getProtocolFromAddress(saved.host, 'ws'),
@@ -1312,8 +1315,8 @@ const loadFmoConfig = () => {
     Object.assign(fmoConfig, {
       source: 'fmo',
       host: '',
-      mmdvmHost: '192.168.3.65',
-      hamboxHost: '192.168.31.120',
+      mmdvmHost: DEFAULT_MMDVM_HOST,
+      hamboxHost: DEFAULT_HAMBOX_HOST,
       bmTalkgroup: '46001',
       networkTarget: '',
       protocol: 'ws',
