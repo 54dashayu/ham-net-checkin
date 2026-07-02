@@ -76,7 +76,7 @@ jobs:
         run: npm install --no-save electron@22.3.27
 
       - name: Build Win7 x64 legacy package
-        run: npx electron-builder --win nsis --x64 --publish never --config.nsis.artifactName='HAM-Checkin-1.01.1-Win7-Legacy-x64-Setup.${ext}'
+        run: npx electron-builder --win nsis --x64 --publish never --config.extraMetadata.main=electron/legacy-main.cjs --config.nsis.artifactName='HAM-Checkin-1.01.1-Win7-Legacy-x64-Setup.${ext}'
 
       - name: Stage Win7 legacy artifacts
         shell: pwsh
