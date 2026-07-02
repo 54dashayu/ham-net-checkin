@@ -1,0 +1,74 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "HAM 台网点名主控台",
+  "version": "../package.json",
+  "identifier": "net.bh1jss.ham-checkin.webview",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "HAM 台网点名主控台",
+        "url": "http://127.0.0.1:37175/",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 1180,
+        "minHeight": 760,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' http://127.0.0.1:37175; connect-src 'self' ws: wss: http: https:; script-src 'self' 'wasm-unsafe-eval'; img-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": {
+      "../dist": "dist"
+    },
+    "publisher": "BH1JSS",
+    "category": "Utility",
+    "shortDescription": "HAM 台网点名主控台",
+    "longDescription": "面向业余无线电台网活动的点名记录工具，支持 BM DMR、MMDVM、HAMBOX、FMO 候选源和 Excel / ADIF 导出。",
+    "icon": [
+      "../build/icon.png",
+      "../build/icon.icns",
+      "../build/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installerIcon": "../build/icon.ico",
+        "languages": ["SimpChinese"],
+        "displayLanguageSelector": false
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "infoPlist": "Info.plist",
+      "dmg": {
+        "appPosition": {
+          "x": 180,
+          "y": 170
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 170
+        },
+        "windowSize": {
+          "height": 400,
+          "width": 660
+        }
+      }
+    }
+  }
+}

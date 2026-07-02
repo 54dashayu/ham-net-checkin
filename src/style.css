@@ -647,6 +647,16 @@ h2 {
   white-space: nowrap;
 }
 
+.inline-featured-card small {
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .inline-featured-tooltip {
   background: #11251a;
   border-radius: 5px;
@@ -989,6 +999,62 @@ h2 {
   color: #45504c;
   font-size: 12px;
   font-weight: 900;
+}
+
+.local-proxy-strip {
+  align-items: center;
+  background: #eef7f2;
+  border: 1px solid #b7d8c6;
+  border-radius: 7px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: max-content minmax(180px, 1fr) max-content max-content;
+  margin-top: 8px;
+  padding: 7px 9px;
+}
+
+.local-proxy-toggle {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+  min-width: 0;
+}
+
+.local-proxy-toggle input {
+  accent-color: var(--green);
+}
+
+.local-proxy-toggle span,
+.local-proxy-status {
+  color: #40514a;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.local-proxy-url {
+  background: #fff;
+  border: 1px solid var(--line-dark);
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  min-height: 32px;
+  min-width: 0;
+  padding: 5px 8px;
+}
+
+.compact-proxy-button {
+  min-height: 32px;
+  padding: 5px 10px;
+}
+
+.local-proxy-status.connected {
+  color: var(--green);
+}
+
+.local-proxy-status.blocked {
+  color: #b35b00;
 }
 
 .fmo-list-wrap {

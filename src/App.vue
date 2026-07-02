@@ -44,11 +44,12 @@ const LANGUAGE_KEY = 'ham-net-checkin-language-v1'
 const CLIENT_TELEMETRY_KEY = 'ham-net-checkin-client-telemetry-v1'
 const CLIENT_INSTALL_ID_KEY = 'ham-net-checkin-install-id-v1'
 const CONTROL_TX_STALE_MS = {
-  bm: 1200,
-  hambox: 1200,
-  mmdvm: 1500,
+  bm: 6000,
+  hambox: 3500,
+  mmdvm: 4500,
   default: 1200
 }
+const MMDVM_CONTROL_TX_MAX_AGE_MS = 125 * 1000
 const PUBLIC_WEB_LIMITS = {
   durationMs: 75 * 60 * 1000,
   resetWindowMs: 24 * 60 * 60 * 1000,
@@ -59,7 +60,14 @@ const DEFAULT_MMDVM_HOST = '192.168.31.119'
 const LEGACY_DEFAULT_MMDVM_HOST = '192.168.3.65'
 const DEFAULT_HAMBOX_HOST = '192.168.31.120'
 const PUBLIC_WEB_SESSION_KEY = 'ham-net-checkin-public-session-v1'
-const initialActivityId = new URLSearchParams(window.location.search).get('activity') || ''
+const LOCAL_ACTIVITY_ID_KEY = 'ham-net-checkin-current-activity-id'
+const isBootingLocalWebViewShell = () =>
+  window.location.protocol !== 'file:' &&
+  (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
+  window.location.port === '37175'
+const initialActivityId =
+  new URLSearchParams(window.location.search).get('activity') ||
+  (isBootingLocalWebViewShell() ? localStorage.getItem(LOCAL_ACTIVITY_ID_KEY) || '' : '')
 const currentActivityId = ref(initialActivityId)
 const scopedKey = (key) => (currentActivityId.value ? `${key}:${currentActivityId.value}` : key)
 const serverBasePath = window.location.pathname.startsWith('/checkin') ? '/checkin' : ''
@@ -75,7 +83,7 @@ const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || get
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
-const appVersion = 'V1.0.01'
+const appVersion = 'V1.01.1'
 
 const i18nMessages = {
   zh: {
@@ -141,6 +149,12 @@ const i18nMessages = {
     monitorSource: '监听源',
     mmdvmTimeslot: '时隙',
     mmdvmTimeslotAll: '全部',
+    localProxy: '本地代理',
+    localProxyConnected: '本地代理已连接',
+    localProxyDisconnected: '未检测到本地代理',
+    localProxyHint: '用于网页版读取本地 MMDVM / HAMBOX',
+    localProxyApprovalRequired: '网页版本地设备访问需注册并通过作者审核',
+    checkLocalProxy: '检测代理',
     protocol: '协议',
     auto: '自动',
     refresh: '刷新',
@@ -262,6 +276,12 @@ const i18nMessages = {
     monitorSource: 'Source',
     mmdvmTimeslot: 'Slot',
     mmdvmTimeslotAll: 'All',
+    localProxy: 'Local proxy',
+    localProxyConnected: 'Local proxy connected',
+    localProxyDisconnected: 'Local proxy not detected',
+    localProxyHint: 'For web access to local MMDVM / HAMBOX',
+    localProxyApprovalRequired: 'Web local-device access requires approved registration',
+    checkLocalProxy: 'Check proxy',
     protocol: 'Protocol',
     auto: 'Auto',
     refresh: 'Refresh',
@@ -326,16 +346,16 @@ const language = ref(localStorage.getItem(LANGUAGE_KEY) === 'en' ? 'en' : 'zh')
 const t = (key) => i18nMessages[language.value]?.[key] ?? i18nMessages.zh[key] ?? key
 const i18nText = (zh, en) => (language.value === 'en' ? en : zh)
 const userManualUrl = computed(() =>
-  `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v0.9.01-user-manual-en.html' : 'ham-checkin-v0.9.01-user-manual.html'}`
+  `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v1.01.1-user-manual-en.html' : 'ham-checkin-v1.01.1-user-manual.html'}`
 )
 const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadWin64'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.0.01-Win64-Setup.exe'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Win64-Setup.exe'
   },
   {
     label: t('desktopDownloadMacOS'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.0.01-MacOS.dmg'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-macOS-WebView.dmg'
   },
   {
     label: t('desktopDownloadWin7'),
@@ -343,7 +363,7 @@ const desktopDownloadLinks = computed(() => [
   },
   {
     label: t('desktopDownloadChecksum'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.0.01.txt'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.01.1.txt'
   }
 ])
 const sourceFieldLabel = (source) =>
@@ -471,6 +491,7 @@ const currentRelayName = ref(i18nText('当前中继/服务器', 'Current Repeate
 const controlTxInfo = ref(null)
 const controlTxClearTimer = ref(null)
 const lastTopControlCandidateKey = ref('')
+const lastMmdvmControlActivityKey = ref('')
 const fmoRefreshing = ref(false)
 const fmoClient = ref(null)
 const fmoEventsClient = ref(null)
@@ -480,6 +501,8 @@ const fmoRefreshTimer = ref(null)
 const monitorRestartTimer = ref(null)
 const monitorRequestId = ref(0)
 const currentLiveCallsign = ref('')
+const localProxyStatus = ref('unknown')
+const localProxyCheckedAt = ref(0)
 const previousMonitorSource = ref('fmo')
 const bmDeviceCache = new Map()
 const mmdvmTimeslotTargets = reactive({
@@ -493,6 +516,8 @@ const fmoConfig = reactive({
   mmdvmHost: DEFAULT_MMDVM_HOST,
   mmdvmTimeslot: 'all',
   hamboxHost: DEFAULT_HAMBOX_HOST,
+  localProxyEnabled: false,
+  localProxyUrl: 'http://127.0.0.1:37174',
   bmTalkgroup: '46001',
   networkTarget: '',
   protocol: 'ws',
@@ -595,6 +620,12 @@ const sanitizeCallsignInput = (value, { allowSlash = false } = {}) => {
 }
 
 const normalizeCallsign = (value) => sanitizeCallsignInput(value, { allowSlash: true })
+
+const extractCallsignFromText = (value) => {
+  const normalized = toHalfWidth(value).toUpperCase()
+  const match = normalized.match(/\b[A-Z0-9]{1,3}\d[A-Z0-9]{2,}(?:\/[A-Z0-9]+)?\b/)
+  return match ? normalizeCallsign(match[0]) : ''
+}
 
 const getCoreCallsign = (value) => {
   const normalized = normalizeCallsign(value)
@@ -799,8 +830,9 @@ const stats = computed(() => {
 
 const duplicateCallsign = computed(() => {
   const callsign = buildRecordCallsign()
-  if (!callsign) return false
-  return records.value.some((record) => record.callsign === callsign && record.id !== editingId.value)
+  const coreCallsign = getCoreCallsign(callsign)
+  if (!coreCallsign) return false
+  return records.value.some((record) => isSameCoreCallsign(record.callsign, coreCallsign) && record.id !== editingId.value)
 })
 
 const profileByCallsign = computed(() => {
@@ -853,6 +885,34 @@ const profileParticipationCount = computed(() => {
   ).length
   return Math.max(Number(currentProfile.value?.checkinCount || 0), currentSessionCount)
 })
+
+const getSessionRecordCountForCallsign = (callsign, excludingId = '') => {
+  const coreCallsign = getCoreCallsign(callsign)
+  if (!coreCallsign) return 0
+  return records.value.filter((record) =>
+    record.id !== excludingId && isSameCoreCallsign(record.callsign, coreCallsign)
+  ).length
+}
+
+const getHistoricalCountForCallsign = (callsign) => {
+  const coreCallsign = getCoreCallsign(callsign)
+  if (!coreCallsign) return 0
+  const profilesForCallsign = profiles.value.map(normalizeProfile).filter((profile) =>
+    isSameCoreCallsign(profile.callsign, coreCallsign)
+  )
+  return Math.max(0, ...profilesForCallsign.map((profile) => Number(profile.checkinCount || 0)))
+}
+
+const candidateStatusText = (candidate) => {
+  const callsign = candidate?.callsign || ''
+  if (!callsign) return ''
+  const sessionCount = getSessionRecordCountForCallsign(callsign)
+  const historicalCount = getHistoricalCountForCallsign(callsign)
+  if (sessionCount && historicalCount) return i18nText(`本次已记录 · 历史 x${historicalCount}`, `Logged now · History x${historicalCount}`)
+  if (sessionCount) return i18nText('本次已记录', 'Logged now')
+  if (historicalCount) return i18nText(`历史 x${historicalCount}`, `History x${historicalCount}`)
+  return i18nText('首次参与', 'First check-in')
+}
 
 const normalizeSerialStart = (value) => Math.max(1, Number.parseInt(value, 10) || 1)
 const recordSerialStart = computed(() => normalizeSerialStart(activityConfig.serialStart))
@@ -987,10 +1047,17 @@ const rankedFmoCandidates = computed(() =>
     return new Date(b.time).getTime() - new Date(a.time).getTime()
   })
 )
+const isControlCandidate = (candidate) => {
+  const controlCallsign = normalizeCallsign(activityConfig.controlCallsign)
+  return Boolean(candidate?.callsign && controlCallsign && isSameCoreCallsign(candidate.callsign, controlCallsign))
+}
+const visibleRankedFmoCandidates = computed(() =>
+  rankedFmoCandidates.value.filter((candidate) => !isControlCandidate(candidate))
+)
 
 const featuredFmoCandidates = computed(() => stagedFmoCandidates.value)
-const promotedFmoCandidates = computed(() => rankedFmoCandidates.value.slice(0, 6))
-const recentFmoCandidates = computed(() => rankedFmoCandidates.value.slice(0, 20))
+const promotedFmoCandidates = computed(() => visibleRankedFmoCandidates.value.slice(0, 6))
+const recentFmoCandidates = computed(() => visibleRankedFmoCandidates.value.slice(0, 20))
 const currentMonitorSource = computed(
   () => monitorSourceByValue[fmoConfig.source] || monitorSourceByValue.fmo
 )
@@ -1018,9 +1085,22 @@ const isLocalWebOrigin = () => {
 const isPublicWebVersion = computed(
   () => window.location.protocol !== 'file:' && !isLocalWebOrigin() && serverBasePath === '/checkin'
 )
+const canUseLocalProxyForCurrentSource = computed(() =>
+  Boolean(
+    fmoConfig.localProxyEnabled &&
+      fmoConfig.localProxyUrl &&
+      ['mmdvm', 'hambox'].includes(fmoConfig.source) &&
+      !isPublicWebVersion.value
+  )
+)
 const isLocalProfileTestMode = () =>
   window.location.protocol !== 'file:' &&
   (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
+  !serverBasePath
+const isLocalWebViewShell = () =>
+  window.location.protocol !== 'file:' &&
+  (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
+  window.location.port === '37175' &&
   !serverBasePath
 const isReadOnlyBaseProfileMode = () => isLocalProfileTestMode() || isPublicWebVersion.value
 const clientTelemetryApiPath = (path) => (isPublicWebVersion.value ? serverApiPath(path) : sharedProfileApiPath(path))
@@ -1030,6 +1110,57 @@ const getClientEdition = () => {
   if (isLocalWebOrigin()) return 'local-web'
   return 'desktop-web'
 }
+
+const normalizeLocalProxyUrl = () =>
+  String(fmoConfig.localProxyUrl || 'http://127.0.0.1:37174').trim().replace(/\/+$/g, '')
+
+const localProxyFetchOptions = () => ({
+  preferLocalProxy: canUseLocalProxyForCurrentSource.value,
+  localProxyUrl: normalizeLocalProxyUrl()
+})
+
+const checkLocalProxy = async ({ force = false } = {}) => {
+  if (isPublicWebVersion.value && !hasApprovedProfileAccess.value) {
+    localProxyStatus.value = 'disabled'
+    return false
+  }
+  if (!fmoConfig.localProxyEnabled || !fmoConfig.localProxyUrl) {
+    localProxyStatus.value = 'disabled'
+    return false
+  }
+  const now = Date.now()
+  if (!force && now - localProxyCheckedAt.value < 10000 && localProxyStatus.value === 'connected') {
+    return true
+  }
+  localProxyStatus.value = 'checking'
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), 1800)
+  try {
+    const response = await fetch(`${normalizeLocalProxyUrl()}/health`, {
+      cache: 'no-store',
+      signal: controller.signal
+    })
+    const data = await response.json().catch(() => ({}))
+    const ok = response.ok && data?.ok
+    localProxyStatus.value = ok ? 'connected' : 'disconnected'
+    localProxyCheckedAt.value = Date.now()
+    return ok
+  } catch {
+    localProxyStatus.value = 'disconnected'
+    localProxyCheckedAt.value = Date.now()
+    return false
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+const localProxyStatusText = computed(() => {
+  if (!fmoConfig.localProxyEnabled) return t('localProxyDisconnected')
+  if (localProxyStatus.value === 'connected') return t('localProxyConnected')
+  if (localProxyStatus.value === 'checking') return i18nText('本地代理检测中', 'Checking local proxy')
+  return t('localProxyDisconnected')
+})
+
 const createAnonymousInstallId = () => {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID()
   return `ham-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
@@ -1094,6 +1225,12 @@ const hasProfileSyncRegistration = computed(
       String(profileSyncConfig.registrationRepeater || '').trim().length >= 2 &&
       String(profileSyncConfig.verificationCode || '').trim().length >= 4)
 )
+const hasApprovedProfileAccess = computed(
+  () =>
+    Boolean(profileSyncConfig.enabled) &&
+    Boolean(normalizeCallsign(profileSyncConfig.registrationCallsign)) &&
+    String(profileSyncConfig.profileKey || '').trim().length >= 32
+)
 const profileSyncLabel = computed(() => (profileSyncConfig.enabled ? t('profileEnabled') : t('profileDisabled')))
 const profileKeyPayload = () => ({
   app: 'HAM 台网点名主控台',
@@ -1129,6 +1266,10 @@ const isPrivateLanAddress = (address) => {
 
 const publicNetworkWarning = computed(() => {
   if (!isPublicWebVersion.value) return ''
+  if (canUseLocalProxyForCurrentSource.value) return ''
+  if (['mmdvm', 'hambox'].includes(fmoConfig.source) && fmoConfig.localProxyEnabled && !hasApprovedProfileAccess.value) {
+    return t('localProxyApprovalRequired')
+  }
   if (fmoConfig.source !== 'bm') return i18nText('网络版仅支持 BM DMR 网络监听，当前监听源请使用本地版。', 'The web version only supports BM DMR monitoring. Use the desktop app for this source.')
   return ''
 })
@@ -1316,6 +1457,8 @@ const loadFmoConfig = () => {
       mmdvmHost: !saved.mmdvmHost || saved.mmdvmHost === LEGACY_DEFAULT_MMDVM_HOST ? DEFAULT_MMDVM_HOST : saved.mmdvmHost,
       mmdvmTimeslot: mmdvmTimeslotOptions.includes(saved.mmdvmTimeslot) ? saved.mmdvmTimeslot : 'all',
       hamboxHost: saved.hamboxHost || DEFAULT_HAMBOX_HOST,
+      localProxyEnabled: false,
+      localProxyUrl: saved.localProxyUrl || 'http://127.0.0.1:37174',
       bmTalkgroup: saved.bmTalkgroup || '46001',
       networkTarget: saved.networkTarget || '',
       protocol: saved.protocol || getProtocolFromAddress(saved.host, 'ws'),
@@ -1330,6 +1473,8 @@ const loadFmoConfig = () => {
       mmdvmHost: DEFAULT_MMDVM_HOST,
       mmdvmTimeslot: 'all',
       hamboxHost: DEFAULT_HAMBOX_HOST,
+      localProxyEnabled: false,
+      localProxyUrl: 'http://127.0.0.1:37174',
       bmTalkgroup: '46001',
       networkTarget: '',
       protocol: 'ws',
@@ -1421,6 +1566,11 @@ const chooseFmoCandidate = (candidate) => {
 }
 
 const commitStagedFmoCandidate = (candidate) => {
+  if (getSessionRecordCountForCallsign(candidate?.callsign)) {
+    removeStagedFmoCandidate(candidate)
+    showNotice(i18nText(`${candidate.callsign} 本次已记录，不再重复录入`, `${candidate.callsign} is already logged in this activity.`))
+    return
+  }
   chooseFmoCandidate(candidate)
   removeStagedFmoCandidate(candidate)
 }
@@ -1610,7 +1760,7 @@ const applyProfileKeyPayload = (payload) => {
   persistProfileSyncConfig()
 }
 
-const exportProfileKey = () => {
+const exportProfileKey = async () => {
   if (!String(profileSyncConfig.profileKey || '').trim()) {
     showNotice(i18nText('请先导入作者发放的验证密钥', 'Import the verification key from the author first.'))
     return
@@ -1619,8 +1769,8 @@ const exportProfileKey = () => {
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: 'application/json;charset=utf-8'
   })
-  downloadBlob(blob, `HAM-callsign-db-key-${payload.callsign || 'CALLSIGN'}.json`)
-  showNotice(i18nText('验证密钥已导出，请妥善保存', 'Verification key exported. Keep it safe.'))
+  const result = await downloadBlob(blob, `HAM-callsign-db-key-${payload.callsign || 'CALLSIGN'}.json`)
+  showNotice(result?.path ? i18nText(`验证密钥已保存：${result.path}`, `Verification key saved: ${result.path}`) : i18nText('验证密钥已导出，请妥善保存', 'Verification key exported. Keep it safe.'))
 }
 
 const importProfileKey = async (event) => {
@@ -1866,6 +2016,14 @@ const scheduleControlTxStaleStop = (candidate, activityKey) => {
   }, timeoutMs)
 }
 
+const getCandidateTimeMs = (candidate) => {
+  const value = String(candidate?.time || '').trim()
+  if (!value) return 0
+  const date = value.includes('T') ? new Date(value) : new Date(value.replace(' ', 'T'))
+  const timestamp = date.getTime()
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
 const updateControlTxInfo = (candidate) => {
   const controlCallsign = normalizeCallsign(activityConfig.controlCallsign)
   const isHost = !!(candidate?.isHost || candidate?.raw?.isHost)
@@ -1884,8 +2042,19 @@ const updateControlTxInfo = (candidate) => {
 }
 
 const syncControlTxFromTopCandidate = () => {
-  const topCandidate = rankedFmoCandidates.value[0]
+  const latestCandidate = rankedFmoCandidates.value[0]
+  let topCandidate = rankedFmoCandidates.value.find(isControlCandidate)
   const controlCallsign = normalizeCallsign(activityConfig.controlCallsign)
+  if (fmoConfig.source === 'mmdvm') {
+    const latestIsControl = latestCandidate?.callsign && controlCallsign && isSameCoreCallsign(latestCandidate.callsign, controlCallsign)
+    const latestTimeMs = getCandidateTimeMs(latestCandidate)
+    const latestIsFresh = latestTimeMs && Date.now() - latestTimeMs <= MMDVM_CONTROL_TX_MAX_AGE_MS
+    if (!latestIsControl || !latestIsFresh) {
+      stopControlTxSpeaking()
+      return
+    }
+    topCandidate = latestCandidate
+  }
   if (!topCandidate?.callsign || !controlCallsign || !isSameCoreCallsign(topCandidate.callsign, controlCallsign)) {
     stopControlTxSpeaking()
     return
@@ -1901,6 +2070,10 @@ const syncControlTxFromTopCandidate = () => {
     isSpeaking = topCandidate.raw?.Event === 'Session-Start'
   } else if (fmoConfig.source === 'hambox') {
     isSpeaking = !!topCandidate.isSpeaking
+  } else if (fmoConfig.source === 'mmdvm') {
+    if (lastMmdvmControlActivityKey.value === activityKey) return
+    lastMmdvmControlActivityKey.value = activityKey
+    isSpeaking = true
   } else if (fmoConfig.source === 'fmo') {
     const isRealtimeSource = /实时|正在/.test(String(topCandidate.sourceLabel || ''))
     isSpeaking = isSpeaking && (!!topCandidate.isSpeaking || isRealtimeSource || !!topCandidate.isHost)
@@ -2114,7 +2287,17 @@ const normalizeHamboxQso = (item, index, targetName = '') => {
 }
 
 const normalizeBmQso = (item, index, targetName = '') => {
-  const callsign = normalizeCallsign(item.SourceCall || item.callsign || '')
+  const callsign =
+    normalizeCallsign(
+      item.SourceCall ||
+        item.sourceCall ||
+        item.SourceCallsign ||
+        item.sourceCallsign ||
+        item.Callsign ||
+        item.callsign ||
+        ''
+    ) ||
+    extractCallsignFromText(item.SourceName || item.sourceName || item.Name || item.name || '')
   if (!callsign) return null
   const profile = profileByCallsign.value.get(callsign)
   const start = Number(item.Start || item.start || 0)
@@ -2165,6 +2348,43 @@ const upsertBmCandidate = (candidate) => {
     })
   ].slice(0, 20)
   syncControlTxFromTopCandidate()
+}
+
+const syncControlTxFromBmCandidate = (candidate, { startupHistory = false } = {}) => {
+  if (!candidate?.callsign || startupHistory || !isControlCandidate(candidate)) return
+  const eventName = String(candidate.raw?.Event || candidate.raw?.event || candidate.raw?.Status || '')
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '')
+  const isStopEvent = /stop|end|term|timeout/.test(eventName)
+  const isStartEvent = !isStopEvent && (/start|begin|tx|transmit|talk|speaking|voice/.test(eventName) || candidate.isSpeaking || candidate.sourceLabel === 'BM实时')
+  const activityKey = getCandidateActivityKey(candidate)
+  if (isStopEvent) {
+    lastTopControlCandidateKey.value = activityKey
+    stopControlTxSpeaking(candidate.time || nowForInput())
+    return
+  }
+  if (!isStartEvent) return
+  lastTopControlCandidateKey.value = activityKey
+  const nextControlTx = { ...candidate, sourceLabel: 'BM实时', isSpeaking: true }
+  updateControlTxInfo(nextControlTx)
+  scheduleControlTxStaleStop(nextControlTx, activityKey)
+}
+
+const isBmControlPayload = (call) => {
+  const controlCallsign = normalizeCallsign(activityConfig.controlCallsign)
+  if (!controlCallsign) return false
+  const payloadCallsign =
+    normalizeCallsign(
+      call?.SourceCall ||
+        call?.sourceCall ||
+        call?.SourceCallsign ||
+        call?.sourceCallsign ||
+        call?.Callsign ||
+        call?.callsign ||
+        ''
+    ) ||
+    extractCallsignFromText(call?.SourceName || call?.sourceName || call?.Name || call?.name || '')
+  return Boolean(payloadCallsign && isSameCoreCallsign(payloadCallsign, controlCallsign))
 }
 
 const formatBmDeviceQth = (device, callsign = '') =>
@@ -2253,6 +2473,9 @@ const handleBmPacket = (packet, talkgroup) => {
   candidate.sourceLabel = isStartupHistory ? 'BM最近通联' : 'BM实时'
   if (isStartupHistory) candidate.isSpeaking = false
   upsertBmCandidate(candidate)
+  if (isBmControlPayload(call)) {
+    syncControlTxFromBmCandidate(candidate, { startupHistory: isStartupHistory })
+  }
   enrichBmCandidate(candidate)
   fmoStatus.value = `BM ${candidate.callsign} ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`
 }
@@ -2522,8 +2745,13 @@ const refreshMmdvmCandidates = async () => {
   closeFmoClient()
   fmoRefreshing.value = true
   try {
+    if (isPublicWebVersion.value && fmoConfig.localProxyEnabled && !(await checkLocalProxy({ force: true }))) {
+      fmoStatus.value = t('localProxyDisconnected')
+      showNotice(i18nText('未检测到本地代理，请先启动 Node.js 本地代理。', 'Local proxy not detected. Start the Node.js local proxy first.'))
+      return
+    }
     fmoStatus.value = i18nText('读取 MMDVM Last Heard', 'Reading MMDVM Last Heard')
-    const result = await fetchMmdvmLastHeard(host)
+    const result = await fetchMmdvmLastHeard(host, { ...localProxyFetchOptions(), includeDashboard: false })
     if (!isCurrentMonitorRequest(requestId, 'mmdvm')) return
     const selectedTimeslot = fmoConfig.mmdvmTimeslot === 'all' ? '' : fmoConfig.mmdvmTimeslot
     const timeslotRows = result.rows.filter(
@@ -2575,8 +2803,13 @@ const refreshHamboxCandidates = async () => {
   closeFmoClient()
   fmoRefreshing.value = true
   try {
+    if (isPublicWebVersion.value && fmoConfig.localProxyEnabled && !(await checkLocalProxy({ force: true }))) {
+      fmoStatus.value = t('localProxyDisconnected')
+      showNotice(i18nText('未检测到本地代理，请先启动 Node.js 本地代理。', 'Local proxy not detected. Start the Node.js local proxy first.'))
+      return
+    }
     fmoStatus.value = i18nText('读取 HAMBOX Last Heard', 'Reading HAMBOX Last Heard')
-    const result = await fetchHamboxLastHeard(host)
+    const result = await fetchHamboxLastHeard(host, localProxyFetchOptions())
     if (!isCurrentMonitorRequest(requestId, 'hambox')) return
     currentRelayName.value = result.target || 'HAMBOX'
     fmoCandidates.value = result.rows
@@ -2665,7 +2898,7 @@ const startFmoAutoRefresh = () => {
   if (!fmoConfig.autoRefresh || !activeMonitorAddress.value) return
   refreshMonitorCandidates()
   if (fmoConfig.source === 'bm' || currentMonitorSource.value.addressKind === 'network') return
-  const refreshMs = fmoConfig.source === 'hambox' ? 3000 : fmoConfig.source === 'mmdvm' ? 8000 : 10000
+  const refreshMs = fmoConfig.source === 'hambox' ? 3000 : fmoConfig.source === 'mmdvm' ? 3000 : 10000
   fmoRefreshTimer.value = window.setInterval(refreshMonitorCandidates, refreshMs)
 }
 
@@ -2678,6 +2911,7 @@ const resetMonitorRuntimeState = () => {
   fmoSpeakingHistory.value = []
   controlTxInfo.value = null
   lastTopControlCandidateKey.value = ''
+  lastMmdvmControlActivityKey.value = ''
   currentLiveCallsign.value = ''
 }
 
@@ -2724,6 +2958,12 @@ const submitRecord = () => {
   const callsign = buildRecordCallsign()
   if (!callsign) {
     showNotice(i18nText('请先填写呼号', 'Enter a callsign first.'))
+    return
+  }
+  const existingSessionCount = getSessionRecordCountForCallsign(callsign, editingId.value)
+  if (!editingId.value && existingSessionCount) {
+    stagedFmoCandidates.value = stagedFmoCandidates.value.filter((candidate) => !isSameCoreCallsign(candidate.callsign, callsign))
+    showNotice(i18nText(`${callsign} 本次已记录，不再重复录入`, `${callsign} is already logged in this activity.`))
     return
   }
 
@@ -2907,12 +3147,47 @@ const escapeHtml = (value) =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
 
-const downloadBlob = (blob, filename) => {
+const blobToBase64 = (blob) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || '').split(',').pop() || '')
+    reader.onerror = () => reject(reader.error || new Error('Blob read failed'))
+    reader.readAsDataURL(blob)
+  })
+
+const saveBlobToLocalShell = async (blob, filename, { picker = true } = {}) => {
+  const response = await fetch('/api/local-file', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      filename,
+      picker,
+      type: blob.type || 'application/octet-stream',
+      dataBase64: await blobToBase64(blob)
+    })
+  })
+  const data = await response.json().catch(() => null)
+  if (data?.cancelled) {
+    const error = new Error('Save cancelled')
+    error.name = 'AbortError'
+    throw error
+  }
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || i18nText('本地文件保存失败', 'Local file save failed.'))
+  }
+  return data
+}
+
+const downloadBlob = async (blob, filename, options = {}) => {
+  if (isLocalWebViewShell()) {
+    return saveBlobToLocalShell(blob, filename, options)
+  }
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)
   link.download = filename
   link.click()
   URL.revokeObjectURL(link.href)
+  return { ok: true, path: filename }
 }
 
 const getExcelFilename = () => {
@@ -3108,16 +3383,16 @@ const createExcelBlob = async () => {
 
 const exportExcel = async () => {
   if (!assertPublicWebAllowed('download')) return
-  downloadBlob(await createExcelBlob(), getExcelFilename())
+  const result = await downloadBlob(await createExcelBlob(), getExcelFilename(), { picker: true })
   if (isPublicWebVersion.value) {
     publicSession.downloads += 1
     persistPublicSession()
   }
   sendClientMetric('excel-export-local', { localFile: true, silent: false })
-  showNotice(i18nText('Excel 已导出', 'Excel exported.'))
+  showNotice(result?.path ? i18nText(`Excel 已保存：${result.path}`, `Excel saved: ${result.path}`) : i18nText('Excel 已导出', 'Excel exported.'))
 }
 
-const exportAdif = () => {
+const exportAdif = async () => {
   if (!records.value.length) {
     showNotice(i18nText('暂无记录可导出', 'No records to export.'))
     return
@@ -3126,13 +3401,13 @@ const exportAdif = () => {
   const blob = new Blob([buildAdifContent()], {
     type: 'application/octet-stream;charset=utf-8'
   })
-  downloadBlob(blob, getAdifFilename())
+  const result = await downloadBlob(blob, getAdifFilename(), { picker: true })
   if (isPublicWebVersion.value) {
     publicSession.downloads += 1
     persistPublicSession()
   }
   sendClientMetric('adif-export-local', { localFile: true, silent: false })
-  showNotice(i18nText('ADIF 已导出', 'ADIF exported.'))
+  showNotice(result?.path ? i18nText(`ADIF 已保存：${result.path}`, `ADIF saved: ${result.path}`) : i18nText('ADIF 已导出', 'ADIF exported.'))
 }
 
 const writeBlobToHandle = async (handle, blob) => {
@@ -3165,12 +3440,14 @@ const saveLocalExcelFile = async ({ silent = false, allowPicker = true } = {}) =
   }
   if (!allowPicker) return false
   if (isPublicWebVersion.value && !assertPublicWebAllowed('download')) return false
-  downloadBlob(blob, filename)
+  const result = await downloadBlob(blob, filename, { picker: allowPicker })
   if (isPublicWebVersion.value) {
     publicSession.downloads += 1
     persistPublicSession()
   }
-  if (!silent) showNotice(i18nText('浏览器已下载点名表格', 'Check-in workbook downloaded by browser.'))
+  if (!silent) {
+    showNotice(result?.path ? i18nText(`点名表格已保存：${result.path}`, `Check-in workbook saved: ${result.path}`) : i18nText('浏览器已下载点名表格', 'Check-in workbook downloaded by browser.'))
+  }
   return true
 }
 
@@ -3241,6 +3518,10 @@ const saveExcelFile = async ({ silent = false, allowPicker = true } = {}) => {
 }
 
 const openUserManual = () => {
+  if (isLocalWebViewShell()) {
+    window.location.href = userManualUrl.value
+    return
+  }
   window.open(userManualUrl.value, '_blank', 'noopener,noreferrer')
 }
 
@@ -3274,18 +3555,18 @@ const toggleAutoSave = async () => {
 
 const createNewActivity = () => {
   if (!assertPublicWebAllowed('new-activity')) return
-  if (
-    records.value.length &&
-    !window.confirm(i18nText('当前点名记录会保留在本地历史中。是否新建一个空白点名日志？', 'Current records will remain in local history. Create a new blank check-in log?'))
-  ) {
-    return
-  }
+  persist()
+  persistActivityConfig()
 
   const nextActivityId = crypto.randomUUID()
   currentActivityId.value = nextActivityId
-  const nextUrl = new URL(window.location.href)
-  nextUrl.searchParams.set('activity', nextActivityId)
-  window.history.replaceState(null, '', nextUrl.toString())
+  if (isLocalWebViewShell()) {
+    localStorage.setItem(LOCAL_ACTIVITY_ID_KEY, nextActivityId)
+  } else {
+    const nextUrl = new URL(window.location.href)
+    nextUrl.searchParams.set('activity', nextActivityId)
+    window.history.replaceState(null, '', nextUrl.toString())
+  }
 
   records.value = []
   selectedRecordIds.value = []
@@ -3305,7 +3586,7 @@ const createNewActivity = () => {
   showNotice(i18nText('已新建空白点名日志', 'New blank check-in log created.'))
 }
 
-const exportJson = () => {
+const exportJson = async () => {
   if (!records.value.length) {
     showNotice(i18nText('暂无记录可备份', 'No records to back up.'))
     return
@@ -3313,8 +3594,8 @@ const exportJson = () => {
   const blob = new Blob([JSON.stringify(records.value, null, 2)], {
     type: 'application/json;charset=utf-8'
   })
-  downloadBlob(blob, `HAM-checkin-backup-${new Date().toISOString().slice(0, 10)}.json`)
-  showNotice(i18nText('JSON 备份已导出', 'JSON backup exported.'))
+  const result = await downloadBlob(blob, `HAM-checkin-backup-${new Date().toISOString().slice(0, 10)}.json`, { picker: true })
+  showNotice(result?.path ? i18nText(`JSON 备份已保存：${result.path}`, `JSON backup saved: ${result.path}`) : i18nText('JSON 备份已导出', 'JSON backup exported.'))
 }
 
 const importJson = async (event) => {
@@ -3438,6 +3719,7 @@ watch(
   () => {
     controlTxInfo.value = null
     lastTopControlCandidateKey.value = ''
+    lastMmdvmControlActivityKey.value = ''
   }
 )
 watch(
@@ -3459,7 +3741,9 @@ watch(
     fmoConfig.networkTarget,
     fmoConfig.protocol,
     fmoConfig.autoRefresh,
-    fmoConfig.fromCallsign
+    fmoConfig.fromCallsign,
+    fmoConfig.localProxyEnabled,
+    fmoConfig.localProxyUrl
   ],
   ([source], [previousSource] = []) => {
     if ((source === 'mmdvm' || source === 'hambox' || source === 'bm') && !fmoConfig.autoRefresh) {
@@ -3746,6 +4030,7 @@ onUnmounted(() => {
           >
             <strong>{{ candidate.callsign }}</strong>
             <span>{{ candidate.qth || candidate.grid || '-' }}</span>
+            <small>{{ candidateStatusText(candidate) }}</small>
             <em class="inline-featured-tooltip">{{ i18nText('双击卡片录入', 'Double-click card to enter') }}</em>
             <button
               type="button"

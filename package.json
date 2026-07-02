@@ -1,7 +1,7 @@
 {
   "name": "ham-net-checkin",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.1.1",
   "productName": "HAM 台网点名主控台",
   "type": "module",
   "main": "electron/main.mjs",
@@ -16,6 +16,10 @@
     "dist:win:portable": "npm run build && electron-builder --win portable dir --x64 --publish never",
     "preview": "vite preview",
     "serve": "node server/index.mjs",
+    "local-proxy": "node local-proxy/index.mjs",
+    "tauri": "tauri",
+    "webview:dev": "npm run build && tauri dev",
+    "webview:build": "tauri build",
     "dist:mac": "npm run build && electron-builder --mac dmg --x64",
     "dist:mac:universal": "npm run build && electron-builder --mac dmg --universal --publish never"
   },
@@ -31,6 +35,7 @@
       "build/icon.icns",
       "build/icon.png",
       "electron/**/*",
+      "local-proxy/**/*",
       "server/**/*",
       "public/favicon.svg",
       "public/favicon.png",
@@ -54,7 +59,7 @@
       ]
     },
     "nsis": {
-      "artifactName": "HAM-Checkin-1.0.01-Win64-Setup.${ext}",
+      "artifactName": "HAM-Checkin-1.01.1-Win64-Setup.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
@@ -68,7 +73,7 @@
       "category": "public.app-category.utilities",
       "hardenedRuntime": true,
       "notarize": true,
-      "artifactName": "HAM-Checkin-1.0.01-MacOS.${ext}",
+      "artifactName": "HAM-Checkin-1.01.1-MacOS.${ext}",
       "extendInfo": {
         "NSLocalNetworkUsageDescription": "HAM 台网点名主控台需要访问局域网内的 MMDVM、HAMBOX 和 FMO 设备，用于读取 Last Heard 与实时点名数据。",
         "NSAppTransportSecurity": {
@@ -85,6 +90,7 @@
     "vue": "^3.5.34"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "@vitejs/plugin-vue": "^6.0.6",
     "electron": "^42.4.1",
     "electron-builder": "^26.15.3",

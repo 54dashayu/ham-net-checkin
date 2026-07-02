@@ -103,7 +103,7 @@ export class FmoClient {
         this.connectPromise = null
         this.close()
         reject(new Error(`连接超时：${wsUrl}`))
-      }, 10000)
+      }, 6000)
 
       this.socket.onopen = () => {
         window.clearTimeout(timeout)
@@ -184,7 +184,7 @@ export class FmoClient {
   getQsoList(page = 0, pageSize = 20, fromCallsign = '') {
     const data = { page, pageSize }
     if (fromCallsign) data.fromCallsign = fromCallsign
-    return this.request('qso', 'getList', data, 18000)
+    return this.request('qso', 'getList', data, 8000)
   }
 
   close() {
@@ -239,7 +239,7 @@ export class FmoEventsClient {
         this.connectPromise = null
         this.close()
         reject(new Error(`实时事件连接超时：${wsUrl}`))
-      }, 10000)
+      }, 6000)
 
       this.socket.onopen = () => {
         window.clearTimeout(timeout)

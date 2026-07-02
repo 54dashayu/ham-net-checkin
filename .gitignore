@@ -15,6 +15,7 @@ release
 output
 .playwright-cli
 references/original-windows-tool
+src-tauri/target
 *.local
 
 # Editor directories and files

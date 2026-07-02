@@ -129,7 +129,7 @@ function isLocalOrigin() {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
 }
 
-async function fetchWithTimeout(url, timeoutMs = 5000) {
+async function fetchWithTimeout(url, timeoutMs = 3500) {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -158,11 +158,35 @@ async function fetchHtmlWithProxy(directUrl) {
   throw lastError || new Error('MMDVM 页面读取失败')
 }
 
-export async function fetchMmdvmLastHeard(host) {
-  const lastHeardHtml = await fetchHtmlWithProxy(buildMmdvmLastHeardUrl(host))
+function buildLocalProxyUrl(localProxyUrl, directUrl) {
+  const base = String(localProxyUrl || '').trim().replace(/\/+$/g, '')
+  if (!base) return ''
+  return `${base}/proxy/raw?url=${encodeURIComponent(directUrl)}`
+}
+
+async function fetchHtmlWithLocalProxy(directUrl, options = {}) {
+  const localProxyUrl = buildLocalProxyUrl(options.localProxyUrl, directUrl)
+  const urls = options.preferLocalProxy && localProxyUrl
+    ? [localProxyUrl, ...(isLocalOrigin() ? [`/mmdvm-proxy?url=${encodeURIComponent(directUrl)}`] : [directUrl, `/mmdvm-proxy?url=${encodeURIComponent(directUrl)}`])]
+    : null
+  if (!urls) return fetchHtmlWithProxy(directUrl)
+  let lastError = null
+  for (const url of urls) {
+    try {
+      return await fetchWithTimeout(url)
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError || new Error('MMDVM 页面读取失败')
+}
+
+export async function fetchMmdvmLastHeard(host, options = {}) {
+  const lastHeardHtml = await fetchHtmlWithLocalProxy(buildMmdvmLastHeardUrl(host), options)
   const lastHeard = parseMmdvmLastHeard(lastHeardHtml)
+  if (options.includeDashboard === false) return lastHeard
   try {
-    const dashboardHtml = await fetchHtmlWithProxy(buildMmdvmDashboardUrl(host))
+    const dashboardHtml = await fetchHtmlWithLocalProxy(buildMmdvmDashboardUrl(host), options)
     const dashboard = parseMmdvmDashboard(dashboardHtml)
     return {
       ...lastHeard,

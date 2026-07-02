@@ -16,12 +16,16 @@
     ul, ol { padding-left: 1.35em; }
     .version { opacity: .86; margin: 0; }
     .tip { background: #eefaf3; border-left: 4px solid #0d8f4f; padding: 12px 14px; border-radius: 10px; }
-    .lang-switch { position: fixed; top: 18px; right: 18px; z-index: 10; color: #08733d; background: rgba(255, 255, 255, .94); border: 1px solid #cfe5d8; border-radius: 999px; box-shadow: 0 8px 24px rgba(16, 70, 44, .16); padding: 8px 14px; font-size: 14px; font-weight: 700; text-decoration: none; }
-    .lang-switch:hover { background: white; border-color: #0d8f4f; }
+    .top-actions { position: fixed; top: 18px; right: 18px; z-index: 10; display: flex; gap: 10px; }
+    .top-action { color: #08733d; background: rgba(255, 255, 255, .94); border: 1px solid #cfe5d8; border-radius: 999px; box-shadow: 0 8px 24px rgba(16, 70, 44, .16); padding: 8px 14px; font-size: 14px; font-weight: 700; text-decoration: none; }
+    .top-action:hover { background: white; border-color: #0d8f4f; }
   </style>
 </head>
 <body>
-  <a class="lang-switch" href="./ham-checkin-v0.9.01-user-manual-en.html" lang="en">English</a>
+  <nav class="top-actions" aria-label="说明书操作">
+    <a class="top-action" href="./">返回主控台</a>
+    <a class="top-action" href="./ham-checkin-v1.01.1-user-manual-en.html" lang="en">English</a>
+  </nav>
   <header>
     <h1>HAM 台网点名主控台使用说明</h1>
     <p class="version">适用版本：V1.01.1</p>

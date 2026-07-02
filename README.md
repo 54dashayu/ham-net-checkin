@@ -4,9 +4,9 @@
 
 ## 当前测试版
 
-V0.9.01 顶部增加主控天线字段，并将桌面工作台最小宽度调整到 1200px 左右，避免首行控件被过度压缩。主控发射提示逻辑已回溯到 V0.9 原机制。
+V1.01.1 转向 WebView 本地版试制：公网 VPS 版继续作为纯网页入口，本地版使用系统 WebView 打开同一套前端，并内置本地 MMDVM / HAMBOX / FMO 访问能力。该版本优化了备选区 4 卡片流程、最近 6 个候选高亮、MMDVM TS1/TS2 筛选、主控发射提示、重复记录拦截、Excel / ADIF 导出和中英文说明书。
 
-本地 Web/VPS 包位于 `release/HAM台网点名主控台-0.9.01-web.tar.gz`，Win64 公网分发包位于 `release/actions-win64-v0.9.01-rollback/HAM-Checkin-0.9.01-Win64.zip`，macOS Developer ID 公证版位于 `release/macos-v0.9.01/HAM-Checkin-0.9.01-macOS-Universal-notarized.dmg`。
+本地 Web/VPS 包位于 `release/v1.01.1/HAM-Checkin-1.01.1-web.tar.gz`，macOS WebView 试制包位于 `release/v1.01.1/`。Win64 WebView 安装包建议通过 GitHub Actions / Windows 环境构建。
 
 ## 当前功能
 

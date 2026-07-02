@@ -10,7 +10,7 @@ function isLocalOrigin() {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
 }
 
-async function fetchWithTimeout(url, timeoutMs = 5000) {
+async function fetchWithTimeout(url, timeoutMs = 3500) {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -44,10 +44,34 @@ async function fetchJsonWithProxy(directUrl) {
   throw lastError || new Error('HAMBOX 数据读取失败')
 }
 
+function buildLocalProxyUrl(localProxyUrl, directUrl) {
+  const base = String(localProxyUrl || '').trim().replace(/\/+$/g, '')
+  if (!base) return ''
+  return `${base}/proxy/raw?url=${encodeURIComponent(directUrl)}`
+}
+
+async function fetchJsonWithLocalProxy(directUrl, options = {}) {
+  const localProxyUrl = buildLocalProxyUrl(options.localProxyUrl, directUrl)
+  const urls = options.preferLocalProxy && localProxyUrl
+    ? [localProxyUrl, ...(isLocalOrigin() ? [`/mmdvm-proxy?url=${encodeURIComponent(directUrl)}`] : [directUrl, `/mmdvm-proxy?url=${encodeURIComponent(directUrl)}`])]
+    : null
+  if (!urls) return fetchJsonWithProxy(directUrl)
+  let lastError = null
+  for (const url of urls) {
+    try {
+      const text = await fetchWithTimeout(url)
+      return JSON.parse(text)
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError || new Error('HAMBOX 数据读取失败')
+}
+
 const sortByTimestampDesc = (left, right) => Number(right.timestamp || 0) - Number(left.timestamp || 0)
 
-export async function fetchHamboxLastHeard(host) {
-  const data = await fetchJsonWithProxy(buildHamboxDataUrl(host))
+export async function fetchHamboxLastHeard(host, options = {}) {
+  const data = await fetchJsonWithLocalProxy(buildHamboxDataUrl(host), options)
   const networkRows = Array.isArray(data?.lh_net) ? data.lh_net : []
   const rfRows = Array.isArray(data?.lh_rf) ? data.lh_rf : []
   const rows = [...networkRows, ...rfRows].filter(Boolean).sort(sortByTimestampDesc).slice(0, 25)

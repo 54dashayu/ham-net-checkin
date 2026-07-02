@@ -2453,7 +2453,7 @@ async function proxyMmdvmPage(req, res) {
     return
   }
   try {
-    const response = await fetchLocalDeviceWithTimeout(parsed, { headers: { accept: 'text/html,*/*' } }, 8000)
+    const response = await fetchLocalDeviceWithTimeout(parsed, { headers: { accept: 'text/html,*/*' } }, 4000)
     const text = await response.text()
     send(res, response.status, text, {
       'content-type': response.headers.get('content-type') || 'text/html; charset=utf-8',
