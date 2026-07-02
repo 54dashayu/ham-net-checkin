@@ -167,6 +167,7 @@ function buildLocalProxyUrl(localProxyUrl, directUrl) {
 
 async function fetchHtmlWithLocalProxy(directUrl, options = {}) {
   if (options.preferBrowserBridge) return fetchTextViaBrowserBridge(directUrl)
+  if (options.directOnly) return fetchWithTimeout(directUrl)
   const localProxyUrl = buildLocalProxyUrl(options.localProxyUrl, directUrl)
   const urls = options.preferLocalProxy && localProxyUrl
     ? [localProxyUrl, ...(isLocalOrigin() ? [`/mmdvm-proxy?url=${encodeURIComponent(directUrl)}`] : [directUrl, `/mmdvm-proxy?url=${encodeURIComponent(directUrl)}`])]

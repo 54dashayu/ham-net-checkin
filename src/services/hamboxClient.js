@@ -53,6 +53,14 @@ function buildLocalProxyUrl(localProxyUrl, directUrl) {
 
 async function fetchJsonWithLocalProxy(directUrl, options = {}) {
   if (options.preferBrowserBridge) return JSON.parse(await fetchTextViaBrowserBridge(directUrl))
+  if (options.directOnly) {
+    const text = await fetchWithTimeout(directUrl)
+    try {
+      return JSON.parse(text)
+    } catch {
+      throw new Error(text.trim().startsWith('<') ? 'HAMBOX 返回了网页而不是数据接口，请确认地址和接口路径。' : 'HAMBOX 数据不是有效 JSON')
+    }
+  }
   const localProxyUrl = buildLocalProxyUrl(options.localProxyUrl, directUrl)
   const urls = options.preferLocalProxy && localProxyUrl
     ? [localProxyUrl, ...(isLocalOrigin() ? [`/mmdvm-proxy?url=${encodeURIComponent(directUrl)}`] : [directUrl, `/mmdvm-proxy?url=${encodeURIComponent(directUrl)}`])]

@@ -1146,6 +1146,7 @@ const getClientEdition = () => {
 }
 
 const localProxyFetchOptions = () => ({
+  directOnly: isDirectLocalExperimentWeb.value,
   preferBrowserBridge: canUseLocalProxyForCurrentSource.value && browserBridgeAvailable.value,
   preferLocalProxy: canUseLocalProxyForCurrentSource.value && !browserBridgeAvailable.value,
   localProxyUrl: normalizeLocalProxyUrl(),
