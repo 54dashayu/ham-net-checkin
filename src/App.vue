@@ -93,11 +93,10 @@ const i18nMessages = {
     appTitle: '台网点名主控台',
     localVersionContact: '本地版下载',
     desktopDownloadTitle: '下载组件',
-    desktopDownloadHint: '本地代理包用于网页版读取本地设备；本地版支持完整监听源与本地设备接入。',
+    desktopDownloadHint: '浏览器插件用于网页版读取本地设备；本地版支持完整监听源与本地设备接入。',
     desktopDownloadWin64: 'Win64 安装版',
     desktopDownloadMacOS: 'MacOS 版本',
     desktopDownloadBrowserBridge: '浏览器插件',
-    desktopDownloadLocalProxy: '本地代理包',
     desktopDownloadChecksum: '下载校验文件',
     recorded: '已记录',
     nextRecord: '下条',
@@ -157,6 +156,7 @@ const i18nMessages = {
     localProxyConnected: '本地代理已连接',
     localProxyDisconnected: '本地代理未启用',
     localProxySetup: '下载启用',
+    browserBridgeInstallGuide: '安装方法',
     browserBridgeSetupPrompt: '已导入验证密钥。访问本地 FMO / MMDVM / HAMBOX 前，请下载并启用 Chrome / Edge 浏览器插件。',
     browserBridgeStatusReady: '插件已连接',
     browserBridgeStatusMissing: '插件未启用',
@@ -225,11 +225,10 @@ const i18nMessages = {
     appTitle: 'Net Check-in Console',
     localVersionContact: 'Desktop Download',
     desktopDownloadTitle: 'Download Components',
-    desktopDownloadHint: 'The local proxy package lets the web app read local devices; the desktop app supports full monitor sources and local device access.',
+    desktopDownloadHint: 'The browser extension lets the web app read local devices; the desktop app supports full monitor sources and local device access.',
     desktopDownloadWin64: 'Win64 installer',
     desktopDownloadMacOS: 'MacOS version',
     desktopDownloadBrowserBridge: 'Browser extension',
-    desktopDownloadLocalProxy: 'Local proxy package',
     desktopDownloadChecksum: 'Checksum file',
     recorded: 'Logged',
     nextRecord: 'Next',
@@ -289,6 +288,7 @@ const i18nMessages = {
     localProxyConnected: 'Local proxy connected',
     localProxyDisconnected: 'Local proxy not enabled',
     localProxySetup: 'Download / enable',
+    browserBridgeInstallGuide: 'Install guide',
     browserBridgeSetupPrompt: 'Verification key imported. Download and enable the Chrome / Edge extension before accessing local FMO / MMDVM / HAMBOX devices.',
     browserBridgeStatusReady: 'Extension connected',
     browserBridgeStatusMissing: 'Extension not enabled',
@@ -362,7 +362,6 @@ const userManualUrl = computed(() =>
   `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v1.01.1-user-manual-en.html' : 'ham-checkin-v1.01.1-user-manual.html'}`
 )
 const browserBridgeDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Browser-Bridge.zip'
-const localProxyDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Local-Proxy.zip'
 const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadBrowserBridge'),
@@ -375,10 +374,6 @@ const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadMacOS'),
     href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-macOS.dmg'
-  },
-  {
-    label: t('desktopDownloadLocalProxy'),
-    href: localProxyDownloadUrl
   },
   {
     label: t('desktopDownloadChecksum'),
@@ -465,6 +460,7 @@ const autoSaveTimer = ref(null)
 const serverSaveAvailable = ref(false)
 const authorQrOpen = ref(false)
 const desktopDownloadOpen = ref(false)
+const browserBridgeGuideOpen = ref(false)
 const aboutOpen = ref(false)
 const stagedFmoCandidates = ref([])
 const clientTelemetryEnabled = ref(localStorage.getItem(CLIENT_TELEMETRY_KEY) !== 'false')
@@ -2810,7 +2806,7 @@ const refreshFmoCandidates = async () => {
   try {
     if (isPublicWebVersion.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
       fmoStatus.value = t('localProxyDisconnected')
-      showNotice(i18nText('未检测到本地代理，请确认本地代理包已安装并在运行。', 'Local proxy not detected. Make sure the local proxy package is installed and running.'))
+      showNotice(i18nText('未检测到浏览器插件，请下载并启用 Chrome / Edge 插件。', 'Browser extension not detected. Download and enable the Chrome / Edge extension.'))
       desktopDownloadOpen.value = true
       return
     }
@@ -2849,7 +2845,7 @@ const refreshMmdvmCandidates = async () => {
   try {
     if (isPublicWebVersion.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
       fmoStatus.value = t('localProxyDisconnected')
-      showNotice(i18nText('未检测到本地代理，请确认本地代理包已安装并在运行。', 'Local proxy not detected. Make sure the local proxy package is installed and running.'))
+      showNotice(i18nText('未检测到浏览器插件，请下载并启用 Chrome / Edge 插件。', 'Browser extension not detected. Download and enable the Chrome / Edge extension.'))
       desktopDownloadOpen.value = true
       return
     }
@@ -2908,7 +2904,7 @@ const refreshHamboxCandidates = async () => {
   try {
     if (isPublicWebVersion.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
       fmoStatus.value = t('localProxyDisconnected')
-      showNotice(i18nText('未检测到本地代理，请确认本地代理包已安装并在运行。', 'Local proxy not detected. Make sure the local proxy package is installed and running.'))
+      showNotice(i18nText('未检测到浏览器插件，请下载并启用 Chrome / Edge 插件。', 'Browser extension not detected. Download and enable the Chrome / Edge extension.'))
       desktopDownloadOpen.value = true
       return
     }
@@ -3953,6 +3949,9 @@ onUnmounted(() => {
       >
         {{ t('localProxySetup') }}
       </a>
+      <button v-if="needsBrowserBridgeSetup" type="button" @click="browserBridgeGuideOpen = true">
+        {{ t('browserBridgeInstallGuide') }}
+      </button>
       <button v-else type="button" @click="desktopDownloadOpen = true">{{ t('localVersionContact') }}</button>
     </div>
     <section class="activity-band">
@@ -4422,6 +4421,17 @@ onUnmounted(() => {
             <div>
               <h2>{{ currentRelayName }}</h2>
               <p>{{ fmoStatus }}</p>
+              <a
+                v-if="isPublicWebVersion && hasApprovedProfileAccess && isLocalProxyCapableSource"
+                class="bridge-status-pill"
+                :class="{ connected: localProxyStatus === 'connected', checking: localProxyStatus === 'checking' }"
+                :href="localProxyStatus === 'connected' ? undefined : browserBridgeDownloadUrl"
+                :target="localProxyStatus === 'connected' ? undefined : '_blank'"
+                rel="noopener"
+                :title="t('localProxyHint')"
+              >
+                {{ browserBridgeCompactStatus }}
+              </a>
             </div>
             <div
               class="fmo-config"
@@ -4550,17 +4560,6 @@ onUnmounted(() => {
                 <RefreshCw :size="18" :class="{ spinning: fmoRefreshing }" />
                 <span>{{ t('refresh') }}</span>
               </button>
-              <a
-                v-if="isPublicWebVersion && hasApprovedProfileAccess && isLocalProxyCapableSource"
-                class="bridge-status-pill"
-                :class="{ connected: localProxyStatus === 'connected', checking: localProxyStatus === 'checking' }"
-                :href="localProxyStatus === 'connected' ? undefined : browserBridgeDownloadUrl"
-                :target="localProxyStatus === 'connected' ? undefined : '_blank'"
-                rel="noopener"
-                :title="t('localProxyHint')"
-              >
-                {{ browserBridgeCompactStatus }}
-              </a>
             </div>
           </div>
           <p v-if="fmoAddressWarning" class="field-hint">{{ fmoAddressWarning }}</p>
@@ -4674,6 +4673,26 @@ onUnmounted(() => {
             rel="noopener"
           >
             {{ link.label }}
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="browserBridgeGuideOpen" class="modal-backdrop compact-modal" @click.self="browserBridgeGuideOpen = false">
+      <div class="desktop-download-modal browser-bridge-guide">
+        <div class="modal-head">
+          <h2>{{ t('browserBridgeInstallGuide') }}</h2>
+          <button type="button" class="icon-button" :title="t('close')" @click="browserBridgeGuideOpen = false">X</button>
+        </div>
+        <ol>
+          <li>{{ i18nText('下载并解压浏览器插件包。', 'Download and unzip the browser extension package.') }}</li>
+          <li>{{ i18nText('打开 Chrome/Edge 的扩展程序页面，并启用开发者模式。', 'Open the Chrome/Edge extensions page and enable Developer mode.') }}</li>
+          <li>{{ i18nText('点击“加载已解压的扩展程序”，选择 ham-local-device-bridge 文件夹。', 'Click “Load unpacked” and select the ham-local-device-bridge folder.') }}</li>
+          <li>{{ i18nText('刷新本网页；状态显示“插件已连接”后即可读取本地设备。', 'Refresh this page. When the status says “Extension connected”, local device access is ready.') }}</li>
+        </ol>
+        <div class="desktop-download-links">
+          <a class="desktop-download-link" :href="browserBridgeDownloadUrl" target="_blank" rel="noopener">
+            {{ t('desktopDownloadBrowserBridge') }}
           </a>
         </div>
       </div>

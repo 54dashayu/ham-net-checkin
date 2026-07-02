@@ -23,14 +23,27 @@ function jsonResponse(ok, extra = {}) {
   return { ok, bridge: 'ham-local-device-bridge', version: '1.01.1', ...extra }
 }
 
+function markBridgeActive() {
+  chrome.action.setBadgeText({ text: 'ON' })
+  chrome.action.setBadgeBackgroundColor({ color: '#0a8f36' })
+  chrome.action.setTitle({ title: 'HAM Local Device Bridge: ON' })
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.action.setBadgeText({ text: '' })
+  chrome.action.setTitle({ title: 'HAM Local Device Bridge' })
+})
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'ping') {
+    markBridgeActive()
     sendResponse(jsonResponse(true))
     return false
   }
 
   if (message?.type === 'fetch') {
     ;(async () => {
+      markBridgeActive()
       const url = String(message.url || '')
       if (!isAllowedLocalTarget(url)) {
         sendResponse(jsonResponse(false, { error: 'Only local network targets are allowed.' }))
@@ -80,6 +93,7 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onDisconnect.addListener(closeSocket)
   port.onMessage.addListener((message) => {
     if (message?.type === 'open') {
+      markBridgeActive()
       const url = String(message.url || '')
       if (!isAllowedLocalTarget(url) || !/^wss?:\/\//i.test(url)) {
         port.postMessage({ event: 'error', error: 'Only local WebSocket targets are allowed.' })
