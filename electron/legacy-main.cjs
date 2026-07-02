@@ -4,6 +4,7 @@ const path = require('node:path')
 const rootDir = path.resolve(__dirname, '..')
 
 let localServer
+let mainWindow
 
 app.disableHardwareAcceleration()
 app.commandLine.appendSwitch('disable-gpu')
@@ -23,7 +24,7 @@ async function createWindow() {
   const address = localServer.address()
   const port = typeof address === 'object' && address ? address.port : 37173
 
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 1180,
@@ -38,14 +39,18 @@ async function createWindow() {
     }
   })
 
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(`http://127.0.0.1:${port}`)) {
       return { action: 'allow' }
     }
     shell.openExternal(url)
     return { action: 'deny' }
   })
-  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     const html = [
       '<!doctype html><meta charset="utf-8" />',
       '<body style="font-family: Microsoft YaHei, Arial; padding: 24px; line-height: 1.7;">',
@@ -55,15 +60,15 @@ async function createWindow() {
       '<p>请关闭任务管理器中的旧进程后重新打开；如仍失败，请反馈此错误信息。</p>',
       '</body>'
     ].join('')
-    win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`).catch(() => {})
-    win.show()
+    mainWindow?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`).catch(() => {})
+    mainWindow?.show()
   })
   try {
-    await win.loadURL(`http://127.0.0.1:${port}/`)
-    win.show()
-    win.focus()
+    await mainWindow.loadURL(`http://127.0.0.1:${port}/`)
+    mainWindow.show()
+    mainWindow.focus()
   } catch (error) {
-    win.show()
+    mainWindow?.show()
     throw error
   }
 }

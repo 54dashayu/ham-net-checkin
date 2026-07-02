@@ -6,6 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
 
 let localServer
+let mainWindow
 
 async function createWindow() {
   process.env.HAM_CHECKIN_DATA_DIR ||= path.join(app.getPath('userData'), 'data')
@@ -21,7 +22,7 @@ async function createWindow() {
   const address = localServer.address()
   const port = typeof address === 'object' && address ? address.port : 37173
 
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 1180,
@@ -36,15 +37,18 @@ async function createWindow() {
     }
   })
 
-  win.once('ready-to-show', () => win.show())
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.once('ready-to-show', () => mainWindow?.show())
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(`http://127.0.0.1:${port}`)) {
       return { action: 'allow' }
     }
     shell.openExternal(url)
     return { action: 'deny' }
   })
-  await win.loadURL(`http://127.0.0.1:${port}/`)
+  await mainWindow.loadURL(`http://127.0.0.1:${port}/`)
 }
 
 app.whenReady().then(createWindow)
