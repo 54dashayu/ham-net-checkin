@@ -1013,18 +1013,14 @@ h2 {
   padding: 7px 9px;
 }
 
-.local-proxy-toggle {
+.local-proxy-label {
   align-items: center;
   display: inline-flex;
   gap: 7px;
   min-width: 0;
 }
 
-.local-proxy-toggle input {
-  accent-color: var(--green);
-}
-
-.local-proxy-toggle span,
+.local-proxy-label,
 .local-proxy-status {
   color: #40514a;
   font-size: 12px;

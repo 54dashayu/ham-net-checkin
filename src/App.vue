@@ -53,8 +53,10 @@ const MMDVM_CONTROL_TX_MAX_AGE_MS = 125 * 1000
 const PUBLIC_WEB_LIMITS = {
   durationMs: 75 * 60 * 1000,
   resetWindowMs: 24 * 60 * 60 * 1000,
-  maxRecords: 60,
-  maxDownloads: 1
+  maxActivities: 1,
+  maxRecords: 80,
+  maxExcelDownloads: 1,
+  maxAdifDownloads: 1
 }
 const DEFAULT_MMDVM_HOST = '192.168.31.119'
 const LEGACY_DEFAULT_MMDVM_HOST = '192.168.3.65'
@@ -457,7 +459,9 @@ const serialEditorDraft = ref('')
 const publicSession = reactive({
   startedAt: Date.now(),
   activityId: initialActivityId || 'default',
-  downloads: 0
+  activityIds: [initialActivityId || 'default'],
+  excelDownloads: 0,
+  adifDownloads: 0
 })
 const profileSyncConfig = reactive({
   enabled: false,
@@ -1085,11 +1089,19 @@ const isLocalWebOrigin = () => {
 const isPublicWebVersion = computed(
   () => window.location.protocol !== 'file:' && !isLocalWebOrigin() && serverBasePath === '/checkin'
 )
+const normalizeLocalProxyUrl = () =>
+  String(fmoConfig.localProxyUrl || 'http://127.0.0.1:37174').trim().replace(/\/+$/g, '')
+
+const isLocalProxyCapableSource = computed(() => ['fmo', 'mmdvm', 'hambox'].includes(fmoConfig.source))
+const isLocalProxyAutoEnabled = computed(() => {
+  if (!isLocalProxyCapableSource.value) return false
+  if (isPublicWebVersion.value) return hasApprovedProfileAccess.value
+  return Boolean(fmoConfig.localProxyEnabled)
+})
 const canUseLocalProxyForCurrentSource = computed(() =>
   Boolean(
-    fmoConfig.localProxyEnabled &&
+    isLocalProxyAutoEnabled.value &&
       fmoConfig.localProxyUrl &&
-      ['fmo', 'mmdvm', 'hambox'].includes(fmoConfig.source) &&
       (!isPublicWebVersion.value || hasApprovedProfileAccess.value)
   )
 )
@@ -1111,9 +1123,6 @@ const getClientEdition = () => {
   return 'desktop-web'
 }
 
-const normalizeLocalProxyUrl = () =>
-  String(fmoConfig.localProxyUrl || 'http://127.0.0.1:37174').trim().replace(/\/+$/g, '')
-
 const localProxyFetchOptions = () => ({
   preferLocalProxy: canUseLocalProxyForCurrentSource.value,
   localProxyUrl: normalizeLocalProxyUrl()
@@ -1124,7 +1133,7 @@ const checkLocalProxy = async ({ force = false } = {}) => {
     localProxyStatus.value = 'disabled'
     return false
   }
-  if (!fmoConfig.localProxyEnabled || !fmoConfig.localProxyUrl) {
+  if (!isLocalProxyAutoEnabled.value || !fmoConfig.localProxyUrl) {
     localProxyStatus.value = 'disabled'
     return false
   }
@@ -1144,10 +1153,22 @@ const checkLocalProxy = async ({ force = false } = {}) => {
     const ok = response.ok && data?.ok
     localProxyStatus.value = ok ? 'connected' : 'disconnected'
     localProxyCheckedAt.value = Date.now()
+    sendClientMetric('local-proxy-check', {
+      status: localProxyStatus.value,
+      action: force ? 'manual-or-forced' : 'auto',
+      proxyEnabled: isLocalProxyAutoEnabled.value,
+      silent: !force
+    })
     return ok
   } catch {
     localProxyStatus.value = 'disconnected'
     localProxyCheckedAt.value = Date.now()
+    sendClientMetric('local-proxy-check', {
+      status: 'disconnected',
+      action: force ? 'manual-or-forced' : 'auto',
+      proxyEnabled: isLocalProxyAutoEnabled.value,
+      silent: !force
+    })
     return false
   } finally {
     window.clearTimeout(timer)
@@ -1155,7 +1176,7 @@ const checkLocalProxy = async ({ force = false } = {}) => {
 }
 
 const localProxyStatusText = computed(() => {
-  if (!fmoConfig.localProxyEnabled) return t('localProxyDisconnected')
+  if (!isLocalProxyAutoEnabled.value) return t('localProxyDisconnected')
   if (localProxyStatus.value === 'connected') return t('localProxyConnected')
   if (localProxyStatus.value === 'checking') return i18nText('本地代理检测中', 'Checking local proxy')
   return t('localProxyDisconnected')
@@ -1181,7 +1202,7 @@ const getClientTelemetryContext = () => ({
   installId: getAnonymousInstallId()
 })
 const sendClientMetric = (event, extra = {}) => {
-  if (!clientTelemetryEnabled.value || isPublicWebVersion.value) return
+  if (!clientTelemetryEnabled.value) return
   const payload = {
     event,
     client: getClientTelemetryContext(),
@@ -1189,6 +1210,8 @@ const sendClientMetric = (event, extra = {}) => {
     controlCallsign: activityConfig.controlCallsign,
     profileCallsign: profileSyncConfig.registrationCallsign,
     recordCount: records.value.length,
+    registered: hasApprovedProfileAccess.value,
+    source: fmoConfig.source,
     ...extra
   }
   fetch(clientTelemetryApiPath('/api/client-events'), {
@@ -1236,12 +1259,14 @@ const profileKeyPayload = () => ({
   issuedAt: new Date().toISOString()
 })
 const publicWebExpired = computed(
-  () => isPublicWebVersion.value && publicElapsedMs.value >= PUBLIC_WEB_LIMITS.durationMs
+  () => isPublicWebVersion.value && !hasApprovedProfileAccess.value && publicElapsedMs.value >= PUBLIC_WEB_LIMITS.durationMs
 )
 const publicWebLimitText = computed(() =>
-  language.value === 'en'
-    ? `*Web version is mainly for BM DMR testing; each IP can test once per 24h: 1h15m, 1 log file, up to 60 records, 1 Excel download. Remaining ${publicTimeRemainingText.value}`
-    : `*网络版仅提供 BM DMR 模式测试；同一 IP 每 24 小时可测试 1 次：时长 1 小时 15 分钟、1 个日志文件、最多 60 条记录、Excel 下载 1 次。剩余 ${publicTimeRemainingText.value}`
+  hasApprovedProfileAccess.value
+    ? i18nText('*已导入验证密钥：网络版已启用完整功能、共享同步和本地代理。', '*Verification key imported: full web features, shared sync and local proxy are enabled.')
+    : language.value === 'en'
+      ? `*Trial web version: BM DMR only, 1 activity, up to 80 records, 1 Excel download, 1 ADIF download, 75 minutes. Remaining ${publicTimeRemainingText.value}`
+      : `*未注册网络版：仅 BM DMR、1 个活动、最多 80 条记录、Excel 与 ADIF 各下载 1 次、使用 75 分钟。剩余 ${publicTimeRemainingText.value}`
 )
 
 const isPrivateLanAddress = (address) => {
@@ -1262,7 +1287,7 @@ const isPrivateLanAddress = (address) => {
 const publicNetworkWarning = computed(() => {
   if (!isPublicWebVersion.value) return ''
   if (canUseLocalProxyForCurrentSource.value) return ''
-  if (['fmo', 'mmdvm', 'hambox'].includes(fmoConfig.source) && fmoConfig.localProxyEnabled && !hasApprovedProfileAccess.value) {
+  if (isLocalProxyCapableSource.value && !hasApprovedProfileAccess.value) {
     return t('localProxyApprovalRequired')
   }
   if (fmoConfig.source !== 'bm') return i18nText('网络版仅支持 BM DMR 网络监听，当前监听源请使用本地版。', 'The web version only supports BM DMR monitoring. Use the desktop app for this source.')
@@ -1288,22 +1313,32 @@ const showNotice = (message, position = 'bottom') => {
 
 const loadPublicSession = () => {
   if (!isPublicWebVersion.value) return
+  const currentId = currentActivityId.value || 'default'
   try {
     const saved = JSON.parse(localStorage.getItem(PUBLIC_WEB_SESSION_KEY) || '{}')
     if (saved && Number(saved.startedAt) && Date.now() - Number(saved.startedAt) < PUBLIC_WEB_LIMITS.resetWindowMs) {
       publicSession.startedAt = Number(saved.startedAt)
-      publicSession.activityId = saved.activityId || currentActivityId.value || 'default'
-      publicSession.downloads = Number(saved.downloads || 0)
+      publicSession.activityId = saved.activityId || currentId
+      publicSession.activityIds = Array.isArray(saved.activityIds) && saved.activityIds.length
+        ? [...new Set(saved.activityIds.map((item) => String(item || '').trim()).filter(Boolean))]
+        : [saved.activityId || currentId]
+      publicSession.excelDownloads = Number(saved.excelDownloads ?? saved.downloads ?? 0)
+      publicSession.adifDownloads = Number(saved.adifDownloads || 0)
     } else {
       publicSession.startedAt = Date.now()
-      publicSession.activityId = currentActivityId.value || 'default'
-      publicSession.downloads = 0
+      publicSession.activityId = currentId
+      publicSession.activityIds = [currentId]
+      publicSession.excelDownloads = 0
+      publicSession.adifDownloads = 0
     }
   } catch {
     publicSession.startedAt = Date.now()
-    publicSession.activityId = currentActivityId.value || 'default'
-    publicSession.downloads = 0
+    publicSession.activityId = currentId
+    publicSession.activityIds = [currentId]
+    publicSession.excelDownloads = 0
+    publicSession.adifDownloads = 0
   }
+  if (!publicSession.activityIds.includes(currentId)) publicSession.activityIds.push(currentId)
   publicElapsedMs.value = Date.now() - publicSession.startedAt
   persistPublicSession()
 }
@@ -1315,40 +1350,69 @@ const persistPublicSession = () => {
     JSON.stringify({
       startedAt: publicSession.startedAt,
       activityId: publicSession.activityId,
-      downloads: publicSession.downloads
+      activityIds: publicSession.activityIds,
+      excelDownloads: publicSession.excelDownloads,
+      adifDownloads: publicSession.adifDownloads
     })
   )
 }
 
 const assertPublicWebAllowed = (action) => {
   if (!isPublicWebVersion.value) return true
+  if (hasApprovedProfileAccess.value) return true
   publicElapsedMs.value = Date.now() - publicSession.startedAt
   if (publicWebExpired.value) {
-    showNotice(i18nText('网络版测试已超过 1 小时 15 分钟，请下载本地版继续使用。', 'Web test time exceeded 1h 15m. Download the desktop app to continue.'), 'top')
+    sendClientMetric('web-limit-block', { action, reason: 'duration', registered: false })
+    showNotice(i18nText('未注册网络版使用时长已超过 75 分钟，请导入验证密钥继续使用。', 'Trial web time exceeded 75 minutes. Import a verification key to continue.'), 'top')
     desktopDownloadOpen.value = true
     return false
   }
   if (action === 'add-record' && records.value.length >= PUBLIC_WEB_LIMITS.maxRecords) {
-    showNotice(i18nText('网络版测试最多记录 60 个友台，请下载本地版继续使用。', 'The web test can log up to 60 stations. Download the desktop app to continue.'), 'top')
+    sendClientMetric('web-limit-block', { action, reason: 'record-count', registered: false })
+    showNotice(i18nText('未注册网络版最多记录 80 个友台，请导入验证密钥继续使用。', 'Trial web version can log up to 80 stations. Import a verification key to continue.'), 'top')
     desktopDownloadOpen.value = true
     return false
   }
   if (action === 'save' && records.value.length > PUBLIC_WEB_LIMITS.maxRecords) {
-    showNotice(i18nText('网络版测试最多保存 60 条记录，请下载本地版继续使用。', 'The web test can save up to 60 records. Download the desktop app to continue.'), 'top')
+    sendClientMetric('web-limit-block', { action, reason: 'record-count', registered: false })
+    showNotice(i18nText('未注册网络版最多保存 80 条记录，请导入验证密钥继续使用。', 'Trial web version can save up to 80 records. Import a verification key to continue.'), 'top')
     desktopDownloadOpen.value = true
     return false
   }
-  if (action === 'new-activity' && publicSession.activityId) {
-    showNotice(i18nText('网络版测试仅允许 1 个日志文件，请下载本地版继续使用。', 'The web test allows only one log file. Download the desktop app to continue.'), 'top')
+  if (action === 'new-activity' && publicSession.activityIds.length >= PUBLIC_WEB_LIMITS.maxActivities) {
+    sendClientMetric('web-limit-block', { action, reason: 'activity', registered: false })
+    showNotice(i18nText('未注册网络版仅允许 1 个活动，请导入验证密钥继续使用。', 'Trial web version allows one activity. Import a verification key to continue.'), 'top')
     desktopDownloadOpen.value = true
     return false
   }
-  if (action === 'download' && publicSession.downloads >= PUBLIC_WEB_LIMITS.maxDownloads) {
-    showNotice(i18nText('网络版测试仅允许下载 1 次日志文件，请下载本地版继续使用。', 'The web test allows one log file download. Download the desktop app to continue.'), 'top')
+  if (action === 'download-excel' && publicSession.excelDownloads >= PUBLIC_WEB_LIMITS.maxExcelDownloads) {
+    sendClientMetric('web-limit-block', { action, reason: 'excel-download', registered: false, format: 'excel' })
+    showNotice(i18nText('未注册网络版仅允许下载 1 次 Excel，请导入验证密钥继续使用。', 'Trial web version allows one Excel download. Import a verification key to continue.'), 'top')
+    desktopDownloadOpen.value = true
+    return false
+  }
+  if (action === 'download-adif' && publicSession.adifDownloads >= PUBLIC_WEB_LIMITS.maxAdifDownloads) {
+    sendClientMetric('web-limit-block', { action, reason: 'adif-download', registered: false, format: 'adif' })
+    showNotice(i18nText('未注册网络版仅允许下载 1 次 ADIF，请导入验证密钥继续使用。', 'Trial web version allows one ADIF download. Import a verification key to continue.'), 'top')
     desktopDownloadOpen.value = true
     return false
   }
   return true
+}
+
+const markPublicActivityUsed = (activityId) => {
+  if (!isPublicWebVersion.value) return
+  const id = String(activityId || 'default').trim() || 'default'
+  publicSession.activityId = id
+  if (!publicSession.activityIds.includes(id)) publicSession.activityIds.push(id)
+  persistPublicSession()
+}
+
+const markPublicDownloadUsed = (format) => {
+  if (!isPublicWebVersion.value || hasApprovedProfileAccess.value) return
+  if (format === 'adif') publicSession.adifDownloads += 1
+  else publicSession.excelDownloads += 1
+  persistPublicSession()
 }
 
 const resetForm = () => {
@@ -1445,7 +1509,9 @@ const loadProfileSyncConfig = () => {
 const loadFmoConfig = () => {
   try {
     const saved = JSON.parse(localStorage.getItem(FMO_CONFIG_KEY) || '{}')
-    const savedSource = monitorSourceByValue[saved.source] ? saved.source : 'fmo'
+    const savedSource = isPublicWebVersion.value && !hasApprovedProfileAccess.value
+      ? 'bm'
+      : monitorSourceByValue[saved.source] ? saved.source : 'fmo'
     Object.assign(fmoConfig, {
       source: savedSource,
       host: saved.host || '',
@@ -1462,8 +1528,9 @@ const loadFmoConfig = () => {
     })
     previousMonitorSource.value = savedSource
   } catch {
+    const fallbackSource = isPublicWebVersion.value && !hasApprovedProfileAccess.value ? 'bm' : 'fmo'
     Object.assign(fmoConfig, {
-      source: 'fmo',
+      source: fallbackSource,
       host: '',
       mmdvmHost: DEFAULT_MMDVM_HOST,
       mmdvmTimeslot: 'all',
@@ -1476,7 +1543,7 @@ const loadFmoConfig = () => {
       fromCallsign: '',
       autoRefresh: false
     })
-    previousMonitorSource.value = 'fmo'
+    previousMonitorSource.value = fallbackSource
   }
 }
 
@@ -1922,6 +1989,7 @@ const toggleProfileSync = () => {
       sendClientMetric('sync-toggle', { enabled: false })
       return
     }
+    checkLocalProxy({ force: true })
     syncSharedProfiles({ silent: false })
   }
 }
@@ -2694,7 +2762,7 @@ const refreshFmoCandidates = async () => {
   const requestId = nextMonitorRequestId()
   fmoRefreshing.value = true
   try {
-    if (isPublicWebVersion.value && fmoConfig.localProxyEnabled && !(await checkLocalProxy({ force: true }))) {
+    if (isPublicWebVersion.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
       fmoStatus.value = t('localProxyDisconnected')
       showNotice(i18nText('未检测到本地代理，请先启动 Node.js 本地代理。', 'Local proxy not detected. Start the Node.js local proxy first.'))
       return
@@ -2732,7 +2800,7 @@ const refreshMmdvmCandidates = async () => {
   closeFmoClient()
   fmoRefreshing.value = true
   try {
-    if (isPublicWebVersion.value && fmoConfig.localProxyEnabled && !(await checkLocalProxy({ force: true }))) {
+    if (isPublicWebVersion.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
       fmoStatus.value = t('localProxyDisconnected')
       showNotice(i18nText('未检测到本地代理，请先启动 Node.js 本地代理。', 'Local proxy not detected. Start the Node.js local proxy first.'))
       return
@@ -2790,7 +2858,7 @@ const refreshHamboxCandidates = async () => {
   closeFmoClient()
   fmoRefreshing.value = true
   try {
-    if (isPublicWebVersion.value && fmoConfig.localProxyEnabled && !(await checkLocalProxy({ force: true }))) {
+    if (isPublicWebVersion.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
       fmoStatus.value = t('localProxyDisconnected')
       showNotice(i18nText('未检测到本地代理，请先启动 Node.js 本地代理。', 'Local proxy not detected. Start the Node.js local proxy first.'))
       return
@@ -3369,13 +3437,10 @@ const createExcelBlob = async () => {
 }
 
 const exportExcel = async () => {
-  if (!assertPublicWebAllowed('download')) return
+  if (!assertPublicWebAllowed('download-excel')) return
   const result = await downloadBlob(await createExcelBlob(), getExcelFilename(), { picker: true })
-  if (isPublicWebVersion.value) {
-    publicSession.downloads += 1
-    persistPublicSession()
-  }
-  sendClientMetric('excel-export-local', { localFile: true, silent: false })
+  markPublicDownloadUsed('excel')
+  sendClientMetric('excel-export-local', { localFile: true, silent: false, format: 'excel', registered: hasApprovedProfileAccess.value })
   showNotice(result?.path ? i18nText(`Excel 已保存：${result.path}`, `Excel saved: ${result.path}`) : i18nText('Excel 已导出', 'Excel exported.'))
 }
 
@@ -3384,16 +3449,13 @@ const exportAdif = async () => {
     showNotice(i18nText('暂无记录可导出', 'No records to export.'))
     return
   }
-  if (!assertPublicWebAllowed('download')) return
+  if (!assertPublicWebAllowed('download-adif')) return
   const blob = new Blob([buildAdifContent()], {
     type: 'application/octet-stream;charset=utf-8'
   })
   const result = await downloadBlob(blob, getAdifFilename(), { picker: true })
-  if (isPublicWebVersion.value) {
-    publicSession.downloads += 1
-    persistPublicSession()
-  }
-  sendClientMetric('adif-export-local', { localFile: true, silent: false })
+  markPublicDownloadUsed('adif')
+  sendClientMetric('adif-export-local', { localFile: true, silent: false, format: 'adif', registered: hasApprovedProfileAccess.value })
   showNotice(result?.path ? i18nText(`ADIF 已保存：${result.path}`, `ADIF saved: ${result.path}`) : i18nText('ADIF 已导出', 'ADIF exported.'))
 }
 
@@ -3405,6 +3467,7 @@ const writeBlobToHandle = async (handle, blob) => {
 
 const saveLocalExcelFile = async ({ silent = false, allowPicker = true } = {}) => {
   if (!allowPicker && !excelFileHandle.value) return false
+  if (isPublicWebVersion.value && allowPicker && !assertPublicWebAllowed('download-excel')) return false
   const blob = await createExcelBlob()
   const filename = getExcelFilename()
   if (window.showSaveFilePicker) {
@@ -3426,12 +3489,8 @@ const saveLocalExcelFile = async ({ silent = false, allowPicker = true } = {}) =
     return true
   }
   if (!allowPicker) return false
-  if (isPublicWebVersion.value && !assertPublicWebAllowed('download')) return false
   const result = await downloadBlob(blob, filename, { picker: allowPicker })
-  if (isPublicWebVersion.value) {
-    publicSession.downloads += 1
-    persistPublicSession()
-  }
+  markPublicDownloadUsed('excel')
   if (!silent) {
     showNotice(result?.path ? i18nText(`点名表格已保存：${result.path}`, `Check-in workbook saved: ${result.path}`) : i18nText('浏览器已下载点名表格', 'Check-in workbook downloaded by browser.'))
   }
@@ -3442,7 +3501,7 @@ const saveCheckinToServer = async ({ silent = false } = {}) => {
   if (!assertPublicWebAllowed('save')) throw new Error(i18nText('网络版测试限制', 'Web test limit reached.'))
   const response = await fetch(serverApiPath('/api/checkins'), {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...sharedProfileAuthHeaders() },
     body: JSON.stringify({
       activityId: currentActivityId.value || 'default',
       activityConfig,
@@ -3459,8 +3518,7 @@ const saveCheckinToServer = async ({ silent = false } = {}) => {
   if (!response.ok) throw new Error(data?.error || i18nText(`服务器保存失败：HTTP ${response.status}`, `Server save failed: HTTP ${response.status}`))
   if (!data?.ok) throw new Error(data?.error || i18nText('服务器保存失败', 'Server save failed.'))
   if (isPublicWebVersion.value) {
-    publicSession.activityId = currentActivityId.value || 'default'
-    persistPublicSession()
+    markPublicActivityUsed(currentActivityId.value || 'default')
   }
   serverSaveAvailable.value = true
   autoSaveEnabled.value = true
@@ -3547,6 +3605,7 @@ const createNewActivity = () => {
 
   const nextActivityId = crypto.randomUUID()
   currentActivityId.value = nextActivityId
+  markPublicActivityUsed(nextActivityId)
   if (isLocalWebViewShell()) {
     localStorage.setItem(LOCAL_ACTIVITY_ID_KEY, nextActivityId)
   } else {
@@ -3570,6 +3629,7 @@ const createNewActivity = () => {
   })
   persist()
   persistActivityConfig()
+  sendClientMetric('new-activity', { action: 'new-activity', registered: hasApprovedProfileAccess.value })
   showNotice(i18nText('已新建空白点名日志', 'New blank check-in log created.'))
 }
 
@@ -3729,10 +3789,18 @@ watch(
     fmoConfig.protocol,
     fmoConfig.autoRefresh,
     fmoConfig.fromCallsign,
-    fmoConfig.localProxyEnabled,
     fmoConfig.localProxyUrl
   ],
   ([source], [previousSource] = []) => {
+    if (previousSource && source !== previousSource) {
+      sendClientMetric('monitor-source-change', {
+        action: 'source-change',
+        source,
+        previousSource,
+        registered: hasApprovedProfileAccess.value,
+        proxyEnabled: isLocalProxyAutoEnabled.value
+      })
+    }
     if ((source === 'mmdvm' || source === 'hambox' || source === 'bm') && !fmoConfig.autoRefresh) {
       fmoConfig.autoRefresh = true
       return
@@ -3740,6 +3808,24 @@ watch(
     window.clearInterval(fmoRefreshTimer.value)
     closeFmoClient()
     restartMonitor({ immediate: Boolean(previousSource && source !== previousSource) })
+  }
+)
+watch(
+  () => [isLocalProxyAutoEnabled.value, fmoConfig.localProxyUrl],
+  ([enabled]) => {
+    if (!enabled) {
+      localProxyStatus.value = 'disabled'
+      return
+    }
+    checkLocalProxy({ force: true })
+  }
+)
+watch(
+  () => hasApprovedProfileAccess.value,
+  (approved) => {
+    if (!isPublicWebVersion.value || approved || fmoConfig.source === 'bm') return
+    fmoConfig.source = 'bm'
+    showNotice(i18nText('未注册网络版仅支持 BM DMR 监听', 'Trial web version only supports BM DMR monitoring.'), 'top')
   }
 )
 watch(
@@ -4410,29 +4496,26 @@ onUnmounted(() => {
             </div>
           </div>
           <div v-if="isPublicWebVersion" class="local-proxy-strip">
-            <label class="local-proxy-toggle" :title="t('localProxyHint')">
-              <input v-model="fmoConfig.localProxyEnabled" type="checkbox" />
-              <span>{{ t('localProxy') }}</span>
-            </label>
+            <span class="local-proxy-label" :title="t('localProxyHint')">{{ t('localProxy') }}</span>
             <input
               v-model="fmoConfig.localProxyUrl"
               class="local-proxy-url"
-              :disabled="!fmoConfig.localProxyEnabled"
+              :disabled="!hasApprovedProfileAccess"
               placeholder="http://127.0.0.1:37174"
             />
             <button
               type="button"
               class="tool-button compact-proxy-button"
-              :disabled="!fmoConfig.localProxyEnabled || !hasApprovedProfileAccess || localProxyStatus === 'checking'"
+              :disabled="!isLocalProxyAutoEnabled || localProxyStatus === 'checking'"
               @click="checkLocalProxy({ force: true })"
             >
               {{ t('checkLocalProxy') }}
             </button>
             <span
               class="local-proxy-status"
-              :class="{ connected: localProxyStatus === 'connected', blocked: fmoConfig.localProxyEnabled && !hasApprovedProfileAccess }"
+              :class="{ connected: localProxyStatus === 'connected', blocked: !hasApprovedProfileAccess }"
             >
-              {{ fmoConfig.localProxyEnabled && !hasApprovedProfileAccess ? t('localProxyApprovalRequired') : localProxyStatusText }}
+              {{ !hasApprovedProfileAccess ? t('localProxyApprovalRequired') : localProxyStatusText }}
             </span>
           </div>
           <p v-if="fmoAddressWarning" class="field-hint">{{ fmoAddressWarning }}</p>

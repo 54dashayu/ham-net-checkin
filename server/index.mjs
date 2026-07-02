@@ -24,12 +24,12 @@ const appDownloadPathPattern = /\/downloads\/ham-checkin\/[^?\s"]+\.(zip|dmg|exe
 const networkLimits = {
   durationMs: 75 * 60 * 1000,
   resetWindowMs: 24 * 60 * 60 * 1000,
-  maxRecords: 60,
+  maxRecords: 80,
   maxActivities: 1
 }
 const defaultAdminSettings = {
   reviewMode: 'loose',
-  profileSyncEnabled: !isNetworkEdition,
+  profileSyncEnabled: true,
   uploadLimit: '2000',
   downloadLogSource: 'pending'
 }
@@ -41,6 +41,10 @@ const clientEventTypes = new Set([
   'app-active',
   'excel-export-local',
   'adif-export-local',
+  'new-activity',
+  'monitor-source-change',
+  'local-proxy-check',
+  'web-limit-block',
   'sync-toggle',
   'app-version-check'
 ])
@@ -543,17 +547,14 @@ function getRegistrationRiskFlags(registration, registrations = []) {
   return flags
 }
 
-async function requireProfileRegistration(req, res) {
+async function getApprovedProfileRegistrationFromRequest(req) {
   let callsign = ''
   let cracCertificate = ''
   let verificationCode = ''
   let qth = ''
   let repeater = ''
   const profileKey = String(req.headers['x-ham-profile-key'] || req.appUrl?.searchParams.get('profileKey') || '').trim()
-  if (!profileKey) {
-    sendProfileJson(res, 403, { ok: false, error: '共享呼号资料库需导入作者发放的验证密钥。' })
-    return null
-  }
+  if (!profileKey) return null
   try {
     const payload = decryptProfileKeyToken(profileKey)
     callsign = normalizeMonitorCallsign(payload.callsign)
@@ -562,15 +563,11 @@ async function requireProfileRegistration(req, res) {
     qth = normalizeRegistrationText(payload.qth)
     repeater = normalizeRegistrationText(payload.repeater)
   } catch {
-    sendProfileJson(res, 403, { ok: false, error: '验证密钥无效，请重新导入作者发放的密钥文件。' })
     return null
   }
-  if (!callsign || !cracCertificate || !qth || !repeater || !verificationCode) {
-    sendProfileJson(res, 403, { ok: false, error: '共享呼号资料库需注册审核后使用。' })
-    return null
-  }
+  if (!callsign || !cracCertificate || !qth || !repeater || !verificationCode) return null
   const registrations = await readProfileRegistrations()
-  const registration = registrations.find(
+  return registrations.find(
     (item) =>
       item.callsign === callsign &&
       item.cracCertificate === cracCertificate &&
@@ -578,7 +575,33 @@ async function requireProfileRegistration(req, res) {
       normalizeRegistrationText(item.repeater) === repeater &&
       normalizeProfileCode(item.verificationCode) === verificationCode &&
       item.status === 'approved'
-  )
+  ) || null
+}
+
+async function requireProfileRegistration(req, res) {
+  const profileKey = String(req.headers['x-ham-profile-key'] || req.appUrl?.searchParams.get('profileKey') || '').trim()
+  if (!profileKey) {
+    sendProfileJson(res, 403, { ok: false, error: '共享呼号资料库需导入作者发放的验证密钥。' })
+    return null
+  }
+  let payload
+  try {
+    payload = decryptProfileKeyToken(profileKey)
+  } catch {
+    sendProfileJson(res, 403, { ok: false, error: '验证密钥无效，请重新导入作者发放的密钥文件。' })
+    return null
+  }
+  if (
+    !normalizeMonitorCallsign(payload.callsign) ||
+    !normalizeCracCertificate(payload.cracCertificate) ||
+    !normalizeRegistrationText(payload.qth) ||
+    !normalizeRegistrationText(payload.repeater) ||
+    !normalizeProfileCode(payload.verificationCode)
+  ) {
+    sendProfileJson(res, 403, { ok: false, error: '共享呼号资料库需注册审核后使用。' })
+    return null
+  }
+  const registration = await getApprovedProfileRegistrationFromRequest(req)
   if (!registration) {
     sendProfileJson(res, 403, { ok: false, error: '注册资料与审核记录不一致，或校验码不正确。' })
     return null
@@ -959,7 +982,15 @@ async function recordClientEvent(req, res) {
     controlCallsign: normalizeMonitorCallsign(payload.controlCallsign),
     profileCallsign: normalizeMonitorCallsign(payload.profileCallsign),
     recordCount: Number.isFinite(Number(payload.recordCount)) ? Number(payload.recordCount) : 0,
+    source: sanitizeClientMetricText(payload.source, 32),
+    previousSource: sanitizeClientMetricText(payload.previousSource, 32),
+    action: sanitizeClientMetricText(payload.action, 48),
+    reason: sanitizeClientMetricText(payload.reason, 48),
+    status: sanitizeClientMetricText(payload.status, 48),
+    format: sanitizeClientMetricText(payload.format, 16),
     enabled: typeof payload.enabled === 'boolean' ? payload.enabled : null,
+    registered: typeof payload.registered === 'boolean' ? payload.registered : null,
+    proxyEnabled: typeof payload.proxyEnabled === 'boolean' ? payload.proxyEnabled : null,
     localFile: typeof payload.localFile === 'boolean' ? payload.localFile : null,
     silent: typeof payload.silent === 'boolean' ? payload.silent : null
   })
@@ -973,10 +1004,11 @@ async function saveCheckin(req, res) {
   const records = Array.isArray(payload.records) ? payload.records : []
   const activityId = String(payload.activityId || 'default')
   const clientIp = getClientIp(req)
+  const approvedRegistration = isNetworkEdition ? await getApprovedProfileRegistrationFromRequest(req) : null
 
-  if (isNetworkEdition) {
+  if (isNetworkEdition && !approvedRegistration) {
     if (records.length > networkLimits.maxRecords) {
-      sendJson(res, 403, { ok: false, error: '网络版最多保存 60 条记录，请使用本地版。' })
+      sendJson(res, 403, { ok: false, error: '未注册网络版最多保存 80 条记录，请导入验证密钥继续使用。' })
       return
     }
     const usage = await readUsage(0)
@@ -991,12 +1023,12 @@ async function saveCheckin(req, res) {
       .filter((time) => Number.isFinite(time))
       .sort((a, b) => a - b)[0]
     if (firstSaveAt && now - firstSaveAt > networkLimits.durationMs) {
-      sendJson(res, 403, { ok: false, error: '网络版测试时长已超过 1 小时 15 分钟，请使用本地版。' })
+      sendJson(res, 403, { ok: false, error: '未注册网络版使用时长已超过 75 分钟，请导入验证密钥继续使用。' })
       return
     }
     const savedActivityIds = new Set(saves.map((item) => item.activityId).filter(Boolean))
     if (!savedActivityIds.has(activityId) && savedActivityIds.size >= networkLimits.maxActivities) {
-      sendJson(res, 403, { ok: false, error: '网络版仅允许 1 个日志文件，请使用本地版。' })
+      sendJson(res, 403, { ok: false, error: '未注册网络版仅允许 1 个活动，请导入验证密钥继续使用。' })
       return
     }
   }
@@ -1031,6 +1063,8 @@ async function saveCheckin(req, res) {
     activityId,
     title,
     recordCount: records.length,
+    registered: Boolean(approvedRegistration),
+    profileCallsign: approvedRegistration?.callsign || '',
     profileStats: payload.profileStats || null
   })
   sendJson(res, 200, {
