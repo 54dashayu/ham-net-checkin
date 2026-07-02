@@ -53,6 +53,13 @@ export function buildWebSocketUrl(host, protocol = 'ws', path = '/ws') {
   return `${wsProtocol}://${normalizedHost}${normalizedPath}`
 }
 
+function buildLocalProxyWebSocketUrl(localProxyUrl, targetUrl) {
+  const base = String(localProxyUrl || '').trim().replace(/\/+$/g, '')
+  if (!base) return ''
+  const proxyBase = base.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:')
+  return `${proxyBase}/proxy/ws?url=${encodeURIComponent(targetUrl)}`
+}
+
 function splitSocketMessages(raw) {
   return String(raw)
     .split('}{')
@@ -76,9 +83,11 @@ export function getAddressWarning(host, protocol = 'ws') {
 }
 
 export class FmoClient {
-  constructor({ host, protocol = 'ws' }) {
+  constructor({ host, protocol = 'ws', preferLocalProxy = false, localProxyUrl = '' }) {
     this.host = normalizeHost(host)
     this.protocol = protocol === 'wss' ? 'wss' : 'ws'
+    this.preferLocalProxy = Boolean(preferLocalProxy)
+    this.localProxyUrl = localProxyUrl
     this.socket = null
     this.connectPromise = null
     this.pending = new Map()
@@ -89,7 +98,11 @@ export class FmoClient {
     if (this.socket?.readyState === WebSocket.OPEN) return
     if (this.socket?.readyState === WebSocket.CONNECTING) return this.connectPromise
 
-    const wsUrl = buildWebSocketUrl(this.host, this.protocol)
+    const directWsUrl = buildWebSocketUrl(this.host, this.protocol)
+    const wsUrl =
+      this.preferLocalProxy && this.localProxyUrl
+        ? buildLocalProxyWebSocketUrl(this.localProxyUrl, directWsUrl)
+        : directWsUrl
     this.connectPromise = new Promise((resolve, reject) => {
       try {
         this.socket = new WebSocket(wsUrl)
@@ -208,9 +221,11 @@ export class FmoClient {
 }
 
 export class FmoEventsClient {
-  constructor({ host, protocol = 'ws', onEvent = null, onStatus = null, reconnectMs = 5000 }) {
+  constructor({ host, protocol = 'ws', onEvent = null, onStatus = null, reconnectMs = 5000, preferLocalProxy = false, localProxyUrl = '' }) {
     this.host = normalizeHost(host)
     this.protocol = protocol === 'wss' ? 'wss' : 'ws'
+    this.preferLocalProxy = Boolean(preferLocalProxy)
+    this.localProxyUrl = localProxyUrl
     this.onEvent = onEvent
     this.onStatus = onStatus
     this.reconnectMs = reconnectMs
@@ -225,7 +240,11 @@ export class FmoEventsClient {
     if (this.socket?.readyState === WebSocket.CONNECTING) return this.connectPromise
 
     this.manualClose = false
-    const wsUrl = buildWebSocketUrl(this.host, this.protocol, '/events')
+    const directWsUrl = buildWebSocketUrl(this.host, this.protocol, '/events')
+    const wsUrl =
+      this.preferLocalProxy && this.localProxyUrl
+        ? buildLocalProxyWebSocketUrl(this.localProxyUrl, directWsUrl)
+        : directWsUrl
     this.connectPromise = new Promise((resolve, reject) => {
       try {
         this.socket = new WebSocket(wsUrl)

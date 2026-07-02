@@ -1,6 +1,7 @@
 import { createServer, request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { fileURLToPath } from 'node:url'
+import { WebSocket, WebSocketServer } from 'ws'
 
 const version = '1.01.1-test'
 const defaultPort = Number(process.env.HAM_CHECKIN_LOCAL_PROXY_PORT || process.env.PORT || 37174)
@@ -81,10 +82,15 @@ function corsHeaders(req, contentType = 'application/json; charset=utf-8') {
   return {
     'access-control-allow-origin': allowOrigin,
     'access-control-allow-methods': 'GET,OPTIONS',
-    'access-control-allow-headers': 'content-type,accept',
+    'access-control-allow-headers': 'content-type,accept,x-ham-profile-key',
     'access-control-max-age': '86400',
     'content-type': contentType
   }
+}
+
+function rejectUpgrade(socket, status = 403, message = 'Forbidden') {
+  socket.write(`HTTP/1.1 ${status} ${message}\r\nConnection: close\r\n\r\n`)
+  socket.destroy()
 }
 
 function send(res, status, body, headers = {}) {
@@ -107,14 +113,14 @@ function buildHamboxUrl(host) {
   return `http://${normalizedHost}/cgi-bin/luci/hambox/dashboard/data?ver=2&limit=25`
 }
 
-function validateTarget(target) {
+function validateTarget(target, protocols = ['http:', 'https:']) {
   let parsed
   try {
     parsed = new URL(target)
   } catch {
     throw new Error('Invalid target URL')
   }
-  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Unsupported protocol')
+  if (!protocols.includes(parsed.protocol)) throw new Error('Unsupported protocol')
   if (!isPrivateHost(parsed.host)) {
     throw new Error('Only local network targets are allowed')
   }
@@ -176,6 +182,57 @@ export function startLocalProxy({ host = defaultHost, port = defaultPort } = {})
   const server = createServer((req, res) => {
     handleRequest(req, res).catch((error) => {
       sendJson(req, res, 500, { ok: false, error: error?.message || 'Local proxy failed' })
+    })
+  })
+  const webSocketServer = new WebSocketServer({ noServer: true })
+  server.on('upgrade', (req, socket, head) => {
+    const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`)
+    if (url.pathname !== '/proxy/ws') {
+      rejectUpgrade(socket, 404, 'Not Found')
+      return
+    }
+    let target
+    try {
+      target = validateTarget(url.searchParams.get('url') || '', ['ws:', 'wss:'])
+    } catch (error) {
+      rejectUpgrade(socket, 403, error?.message || 'Forbidden')
+      return
+    }
+    webSocketServer.handleUpgrade(req, socket, head, (clientSocket) => {
+      const targetSocket = new WebSocket(target)
+      const pending = []
+      const closeBoth = () => {
+        try {
+          clientSocket.close()
+        } catch {
+          /* ignore */
+        }
+        try {
+          targetSocket.close()
+        } catch {
+          /* ignore */
+        }
+      }
+      clientSocket.on('message', (message, isBinary) => {
+        if (targetSocket.readyState === WebSocket.OPEN) {
+          targetSocket.send(message, { binary: isBinary })
+        } else if (targetSocket.readyState === WebSocket.CONNECTING) {
+          pending.push([message, isBinary])
+        }
+      })
+      targetSocket.on('open', () => {
+        while (pending.length) {
+          const [message, isBinary] = pending.shift()
+          targetSocket.send(message, { binary: isBinary })
+        }
+      })
+      targetSocket.on('message', (message, isBinary) => {
+        if (clientSocket.readyState === WebSocket.OPEN) clientSocket.send(message, { binary: isBinary })
+      })
+      targetSocket.on('error', () => closeBoth())
+      clientSocket.on('error', () => closeBoth())
+      targetSocket.on('close', () => closeBoth())
+      clientSocket.on('close', () => closeBoth())
     })
   })
   return new Promise((resolve, reject) => {

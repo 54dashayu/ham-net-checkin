@@ -93,6 +93,7 @@ const i18nMessages = {
     desktopDownloadHint: '本地版支持完整监听源与本地设备接入。请选择适合系统的版本下载。',
     desktopDownloadWin64: 'Win64 安装版',
     desktopDownloadMacOS: 'MacOS 版本',
+    desktopDownloadLocalProxy: '本地代理包',
     desktopDownloadChecksum: '下载校验文件',
     recorded: '已记录',
     nextRecord: '下条',
@@ -151,7 +152,7 @@ const i18nMessages = {
     localProxy: '本地代理',
     localProxyConnected: '本地代理已连接',
     localProxyDisconnected: '未检测到本地代理',
-    localProxyHint: '用于网页版读取本地 MMDVM / HAMBOX',
+    localProxyHint: '用于网页版读取本地 FMO / MMDVM / HAMBOX',
     localProxyApprovalRequired: '网页版本地设备访问需注册并通过作者审核',
     checkLocalProxy: '检测代理',
     protocol: '协议',
@@ -219,6 +220,7 @@ const i18nMessages = {
     desktopDownloadHint: 'The desktop app supports full monitor sources and local device access. Choose the build for your system.',
     desktopDownloadWin64: 'Win64 installer',
     desktopDownloadMacOS: 'MacOS version',
+    desktopDownloadLocalProxy: 'Local proxy package',
     desktopDownloadChecksum: 'Checksum file',
     recorded: 'Logged',
     nextRecord: 'Next',
@@ -277,7 +279,7 @@ const i18nMessages = {
     localProxy: 'Local proxy',
     localProxyConnected: 'Local proxy connected',
     localProxyDisconnected: 'Local proxy not detected',
-    localProxyHint: 'For web access to local MMDVM / HAMBOX',
+    localProxyHint: 'For web access to local FMO / MMDVM / HAMBOX',
     localProxyApprovalRequired: 'Web local-device access requires approved registration',
     checkLocalProxy: 'Check proxy',
     protocol: 'Protocol',
@@ -354,6 +356,10 @@ const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadMacOS'),
     href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-macOS.dmg'
+  },
+  {
+    label: t('desktopDownloadLocalProxy'),
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Local-Proxy.zip'
   },
   {
     label: t('desktopDownloadChecksum'),
@@ -1083,8 +1089,8 @@ const canUseLocalProxyForCurrentSource = computed(() =>
   Boolean(
     fmoConfig.localProxyEnabled &&
       fmoConfig.localProxyUrl &&
-      ['mmdvm', 'hambox'].includes(fmoConfig.source) &&
-      !isPublicWebVersion.value
+      ['fmo', 'mmdvm', 'hambox'].includes(fmoConfig.source) &&
+      (!isPublicWebVersion.value || hasApprovedProfileAccess.value)
   )
 )
 const isLocalProfileTestMode = () =>
@@ -1096,7 +1102,7 @@ const isLocalWebViewShell = () =>
   (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
   window.location.port === '37175' &&
   !serverBasePath
-const isReadOnlyBaseProfileMode = () => isLocalProfileTestMode() || isPublicWebVersion.value
+const isReadOnlyBaseProfileMode = () => isLocalProfileTestMode()
 const clientTelemetryApiPath = (path) => (isPublicWebVersion.value ? serverApiPath(path) : sharedProfileApiPath(path))
 const getClientEdition = () => {
   if (isPublicWebVersion.value) return 'public-web'
@@ -1212,12 +1218,7 @@ const publicTimeRemainingText = computed(() => {
 const hasProfileSyncRegistration = computed(
   () =>
     (Boolean(normalizeCallsign(profileSyncConfig.registrationCallsign)) &&
-      String(profileSyncConfig.profileKey || '').trim().length >= 32) ||
-    (Boolean(normalizeCallsign(profileSyncConfig.registrationCallsign)) &&
-      String(profileSyncConfig.cracCertificate || '').trim().length >= 4 &&
-      String(profileSyncConfig.registrationQth || '').trim().length >= 2 &&
-      String(profileSyncConfig.registrationRepeater || '').trim().length >= 2 &&
-      String(profileSyncConfig.verificationCode || '').trim().length >= 4)
+      String(profileSyncConfig.profileKey || '').trim().length >= 32)
 )
 const hasApprovedProfileAccess = computed(
   () =>
@@ -1261,7 +1262,7 @@ const isPrivateLanAddress = (address) => {
 const publicNetworkWarning = computed(() => {
   if (!isPublicWebVersion.value) return ''
   if (canUseLocalProxyForCurrentSource.value) return ''
-  if (['mmdvm', 'hambox'].includes(fmoConfig.source) && fmoConfig.localProxyEnabled && !hasApprovedProfileAccess.value) {
+  if (['fmo', 'mmdvm', 'hambox'].includes(fmoConfig.source) && fmoConfig.localProxyEnabled && !hasApprovedProfileAccess.value) {
     return t('localProxyApprovalRequired')
   }
   if (fmoConfig.source !== 'bm') return i18nText('网络版仅支持 BM DMR 网络监听，当前监听源请使用本地版。', 'The web version only supports BM DMR monitoring. Use the desktop app for this source.')
@@ -1270,7 +1271,7 @@ const publicNetworkWarning = computed(() => {
 
 const fmoAddressWarning = computed(() =>
   publicNetworkWarning.value ||
-  (fmoConfig.source === 'fmo' && activeMonitorAddress.value
+  (fmoConfig.source === 'fmo' && activeMonitorAddress.value && !canUseLocalProxyForCurrentSource.value
     ? getAddressWarning(activeMonitorAddress.value, fmoConfig.protocol)
     : '')
 )
@@ -1415,7 +1416,7 @@ const loadProfileSyncConfig = () => {
       enabled: Boolean(
         saved.enabled &&
           saved.registrationCallsign &&
-          (saved.profileKey || (saved.cracCertificate && saved.verificationCode))
+          saved.profileKey
       ),
       registrationCallsign: normalizeCallsign(saved.registrationCallsign || ''),
       cracCertificate: String(saved.cracCertificate || '').trim(),
@@ -1451,7 +1452,7 @@ const loadFmoConfig = () => {
       mmdvmHost: !saved.mmdvmHost || saved.mmdvmHost === LEGACY_DEFAULT_MMDVM_HOST ? DEFAULT_MMDVM_HOST : saved.mmdvmHost,
       mmdvmTimeslot: mmdvmTimeslotOptions.includes(saved.mmdvmTimeslot) ? saved.mmdvmTimeslot : 'all',
       hamboxHost: saved.hamboxHost || DEFAULT_HAMBOX_HOST,
-      localProxyEnabled: false,
+      localProxyEnabled: Boolean(saved.localProxyEnabled),
       localProxyUrl: saved.localProxyUrl || 'http://127.0.0.1:37174',
       bmTalkgroup: saved.bmTalkgroup || '46001',
       networkTarget: saved.networkTarget || '',
@@ -1725,21 +1726,7 @@ const applyProfileKeyPayload = (payload) => {
   const qth = String(payload?.qth || payload?.registrationQth || '').trim()
   const repeater = String(payload?.repeater || payload?.registrationRepeater || '').trim()
   const verificationCode = String(payload?.verificationCode || payload?.code || '').trim()
-  if (profileKey) {
-    if (!callsign) throw new Error(i18nText('密钥文件内容不完整', 'The key file is incomplete.'))
-    Object.assign(profileSyncConfig, {
-      enabled: true,
-      registrationCallsign: callsign,
-      cracCertificate,
-      registrationQth: qth,
-      registrationRepeater: repeater,
-      verificationCode: '',
-      profileKey
-    })
-    persistProfileSyncConfig()
-    return
-  }
-  if (!callsign || cracCertificate.length < 4 || qth.length < 2 || repeater.length < 2 || verificationCode.length < 4) {
+  if (!callsign || !profileKey) {
     throw new Error(i18nText('密钥文件内容不完整', 'The key file is incomplete.'))
   }
   Object.assign(profileSyncConfig, {
@@ -1748,8 +1735,8 @@ const applyProfileKeyPayload = (payload) => {
     cracCertificate,
     registrationQth: qth,
     registrationRepeater: repeater,
-    verificationCode,
-    profileKey: ''
+    verificationCode: '',
+    profileKey
   })
   persistProfileSyncConfig()
 }
@@ -2606,6 +2593,7 @@ const connectFmoEvents = async (host) => {
   const eventsClient = new FmoEventsClient({
     host,
     protocol: fmoConfig.protocol,
+    ...localProxyFetchOptions(),
     onEvent(message) {
       if (fmoConfig.source === 'fmo') handleFmoEvent(message)
     },
@@ -2639,7 +2627,7 @@ const connectFmoApi = async (host) => {
     fmoClient.value = null
   }
 
-  const apiClient = new FmoClient({ host, protocol: fmoConfig.protocol })
+  const apiClient = new FmoClient({ host, protocol: fmoConfig.protocol, ...localProxyFetchOptions() })
   await apiClient.connect()
   fmoClient.value = apiClient
   await refreshCurrentRelayName(apiClient)
@@ -2706,6 +2694,11 @@ const refreshFmoCandidates = async () => {
   const requestId = nextMonitorRequestId()
   fmoRefreshing.value = true
   try {
+    if (isPublicWebVersion.value && fmoConfig.localProxyEnabled && !(await checkLocalProxy({ force: true }))) {
+      fmoStatus.value = t('localProxyDisconnected')
+      showNotice(i18nText('未检测到本地代理，请先启动 Node.js 本地代理。', 'Local proxy not detected. Start the Node.js local proxy first.'))
+      return
+    }
     let client = fmoClient.value || (await connectFmo())
     if (!isCurrentMonitorRequest(requestId, 'fmo')) return
     if (client) await refreshCurrentRelayName(client)
@@ -4415,6 +4408,32 @@ onUnmounted(() => {
                 <span>{{ t('refresh') }}</span>
               </button>
             </div>
+          </div>
+          <div v-if="isPublicWebVersion" class="local-proxy-strip">
+            <label class="local-proxy-toggle" :title="t('localProxyHint')">
+              <input v-model="fmoConfig.localProxyEnabled" type="checkbox" />
+              <span>{{ t('localProxy') }}</span>
+            </label>
+            <input
+              v-model="fmoConfig.localProxyUrl"
+              class="local-proxy-url"
+              :disabled="!fmoConfig.localProxyEnabled"
+              placeholder="http://127.0.0.1:37174"
+            />
+            <button
+              type="button"
+              class="tool-button compact-proxy-button"
+              :disabled="!fmoConfig.localProxyEnabled || !hasApprovedProfileAccess || localProxyStatus === 'checking'"
+              @click="checkLocalProxy({ force: true })"
+            >
+              {{ t('checkLocalProxy') }}
+            </button>
+            <span
+              class="local-proxy-status"
+              :class="{ connected: localProxyStatus === 'connected', blocked: fmoConfig.localProxyEnabled && !hasApprovedProfileAccess }"
+            >
+              {{ fmoConfig.localProxyEnabled && !hasApprovedProfileAccess ? t('localProxyApprovalRequired') : localProxyStatusText }}
+            </span>
           </div>
           <p v-if="fmoAddressWarning" class="field-hint">{{ fmoAddressWarning }}</p>
 

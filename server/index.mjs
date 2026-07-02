@@ -29,7 +29,7 @@ const networkLimits = {
 }
 const defaultAdminSettings = {
   reviewMode: 'loose',
-  profileSyncEnabled: true,
+  profileSyncEnabled: !isNetworkEdition,
   uploadLimit: '2000',
   downloadLogSource: 'pending'
 }
@@ -550,30 +550,20 @@ async function requireProfileRegistration(req, res) {
   let qth = ''
   let repeater = ''
   const profileKey = String(req.headers['x-ham-profile-key'] || req.appUrl?.searchParams.get('profileKey') || '').trim()
-  if (profileKey) {
-    try {
-      const payload = decryptProfileKeyToken(profileKey)
-      callsign = normalizeMonitorCallsign(payload.callsign)
-      cracCertificate = normalizeCracCertificate(payload.cracCertificate)
-      verificationCode = normalizeProfileCode(payload.verificationCode)
-      qth = normalizeRegistrationText(payload.qth)
-      repeater = normalizeRegistrationText(payload.repeater)
-    } catch {
-      sendProfileJson(res, 403, { ok: false, error: '验证密钥无效，请重新导入作者发放的密钥文件。' })
-      return null
-    }
-  } else {
-    callsign = normalizeMonitorCallsign(req.headers['x-ham-callsign'] || req.appUrl?.searchParams.get('callsign'))
-    cracCertificate = normalizeCracCertificate(
-      req.headers['x-ham-crac-certificate'] || req.appUrl?.searchParams.get('crac')
-    )
-    verificationCode = normalizeProfileCode(req.headers['x-ham-profile-code'] || req.appUrl?.searchParams.get('code'))
-    qth = normalizeRegistrationText(
-      decodeRegistrationHeader(req.headers['x-ham-registration-qth'] || req.appUrl?.searchParams.get('qth'))
-    )
-    repeater = normalizeRegistrationText(
-      decodeRegistrationHeader(req.headers['x-ham-registration-repeater'] || req.appUrl?.searchParams.get('repeater'))
-    )
+  if (!profileKey) {
+    sendProfileJson(res, 403, { ok: false, error: '共享呼号资料库需导入作者发放的验证密钥。' })
+    return null
+  }
+  try {
+    const payload = decryptProfileKeyToken(profileKey)
+    callsign = normalizeMonitorCallsign(payload.callsign)
+    cracCertificate = normalizeCracCertificate(payload.cracCertificate)
+    verificationCode = normalizeProfileCode(payload.verificationCode)
+    qth = normalizeRegistrationText(payload.qth)
+    repeater = normalizeRegistrationText(payload.repeater)
+  } catch {
+    sendProfileJson(res, 403, { ok: false, error: '验证密钥无效，请重新导入作者发放的密钥文件。' })
+    return null
   }
   if (!callsign || !cracCertificate || !qth || !repeater || !verificationCode) {
     sendProfileJson(res, 403, { ok: false, error: '共享呼号资料库需注册审核后使用。' })
