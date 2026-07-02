@@ -91,8 +91,8 @@ const i18nMessages = {
   zh: {
     appTitle: '台网点名主控台',
     localVersionContact: '本地版下载',
-    desktopDownloadTitle: '下载本地版',
-    desktopDownloadHint: '本地版支持完整监听源与本地设备接入。请选择适合系统的版本下载。',
+    desktopDownloadTitle: '下载组件',
+    desktopDownloadHint: '本地代理包用于网页版读取本地设备；本地版支持完整监听源与本地设备接入。',
     desktopDownloadWin64: 'Win64 安装版',
     desktopDownloadMacOS: 'MacOS 版本',
     desktopDownloadLocalProxy: '本地代理包',
@@ -153,10 +153,10 @@ const i18nMessages = {
     mmdvmTimeslotAll: '全部',
     localProxy: '本地代理',
     localProxyConnected: '本地代理已连接',
-    localProxyDisconnected: '未检测到本地代理',
+    localProxyDisconnected: '本地代理未启用',
+    localProxySetup: '下载启用',
     localProxyHint: '用于网页版读取本地 FMO / MMDVM / HAMBOX',
     localProxyApprovalRequired: '网页版本地设备访问需注册并通过作者审核',
-    checkLocalProxy: '检测代理',
     protocol: '协议',
     auto: '自动',
     refresh: '刷新',
@@ -218,8 +218,8 @@ const i18nMessages = {
   en: {
     appTitle: 'Net Check-in Console',
     localVersionContact: 'Desktop Download',
-    desktopDownloadTitle: 'Download Desktop App',
-    desktopDownloadHint: 'The desktop app supports full monitor sources and local device access. Choose the build for your system.',
+    desktopDownloadTitle: 'Download Components',
+    desktopDownloadHint: 'The local proxy package lets the web app read local devices; the desktop app supports full monitor sources and local device access.',
     desktopDownloadWin64: 'Win64 installer',
     desktopDownloadMacOS: 'MacOS version',
     desktopDownloadLocalProxy: 'Local proxy package',
@@ -280,10 +280,10 @@ const i18nMessages = {
     mmdvmTimeslotAll: 'All',
     localProxy: 'Local proxy',
     localProxyConnected: 'Local proxy connected',
-    localProxyDisconnected: 'Local proxy not detected',
+    localProxyDisconnected: 'Local proxy not enabled',
+    localProxySetup: 'Download / enable',
     localProxyHint: 'For web access to local FMO / MMDVM / HAMBOX',
     localProxyApprovalRequired: 'Web local-device access requires approved registration',
-    checkLocalProxy: 'Check proxy',
     protocol: 'Protocol',
     auto: 'Auto',
     refresh: 'Refresh',
@@ -2764,7 +2764,8 @@ const refreshFmoCandidates = async () => {
   try {
     if (isPublicWebVersion.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
       fmoStatus.value = t('localProxyDisconnected')
-      showNotice(i18nText('未检测到本地代理，请先启动 Node.js 本地代理。', 'Local proxy not detected. Start the Node.js local proxy first.'))
+      showNotice(i18nText('未检测到本地代理，请确认本地代理包已安装并在运行。', 'Local proxy not detected. Make sure the local proxy package is installed and running.'))
+      desktopDownloadOpen.value = true
       return
     }
     let client = fmoClient.value || (await connectFmo())
@@ -2802,7 +2803,8 @@ const refreshMmdvmCandidates = async () => {
   try {
     if (isPublicWebVersion.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
       fmoStatus.value = t('localProxyDisconnected')
-      showNotice(i18nText('未检测到本地代理，请先启动 Node.js 本地代理。', 'Local proxy not detected. Start the Node.js local proxy first.'))
+      showNotice(i18nText('未检测到本地代理，请确认本地代理包已安装并在运行。', 'Local proxy not detected. Make sure the local proxy package is installed and running.'))
+      desktopDownloadOpen.value = true
       return
     }
     fmoStatus.value = i18nText('读取 MMDVM Last Heard', 'Reading MMDVM Last Heard')
@@ -2860,7 +2862,8 @@ const refreshHamboxCandidates = async () => {
   try {
     if (isPublicWebVersion.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
       fmoStatus.value = t('localProxyDisconnected')
-      showNotice(i18nText('未检测到本地代理，请先启动 Node.js 本地代理。', 'Local proxy not detected. Start the Node.js local proxy first.'))
+      showNotice(i18nText('未检测到本地代理，请确认本地代理包已安装并在运行。', 'Local proxy not detected. Make sure the local proxy package is installed and running.'))
+      desktopDownloadOpen.value = true
       return
     }
     fmoStatus.value = i18nText('读取 HAMBOX Last Heard', 'Reading HAMBOX Last Heard')
@@ -4497,26 +4500,21 @@ onUnmounted(() => {
           </div>
           <div v-if="isPublicWebVersion" class="local-proxy-strip">
             <span class="local-proxy-label" :title="t('localProxyHint')">{{ t('localProxy') }}</span>
-            <input
-              v-model="fmoConfig.localProxyUrl"
-              class="local-proxy-url"
-              :disabled="!hasApprovedProfileAccess"
-              placeholder="http://127.0.0.1:37174"
-            />
-            <button
-              type="button"
-              class="tool-button compact-proxy-button"
-              :disabled="!isLocalProxyAutoEnabled || localProxyStatus === 'checking'"
-              @click="checkLocalProxy({ force: true })"
-            >
-              {{ t('checkLocalProxy') }}
-            </button>
             <span
               class="local-proxy-status"
               :class="{ connected: localProxyStatus === 'connected', blocked: !hasApprovedProfileAccess }"
             >
               {{ !hasApprovedProfileAccess ? t('localProxyApprovalRequired') : localProxyStatusText }}
             </span>
+            <button
+              v-if="hasApprovedProfileAccess && localProxyStatus !== 'connected'"
+              type="button"
+              class="tool-button compact-proxy-button"
+              :disabled="localProxyStatus === 'checking'"
+              @click="desktopDownloadOpen = true"
+            >
+              {{ t('localProxySetup') }}
+            </button>
           </div>
           <p v-if="fmoAddressWarning" class="field-hint">{{ fmoAddressWarning }}</p>
 
