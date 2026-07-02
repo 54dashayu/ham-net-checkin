@@ -27,7 +27,7 @@ jobs:
         run: npm ci
 
       - name: Build Win64 WebView package
-        run: npm run webview:build
+        run: npm run webview:build -- --bundles nsis
 
       - name: Stage Win64 WebView artifacts
         shell: pwsh
