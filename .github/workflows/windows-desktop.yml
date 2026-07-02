@@ -7,7 +7,8 @@ on:
       - 'desktop-v*'
 
 jobs:
-  build-win64:
+  build-win64-webview:
+    name: Build Win64 WebView package
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -19,16 +20,81 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Win64 desktop package
-        run: npm run dist:win
+      - name: Build Win64 WebView package
+        run: npm run webview:build
 
-      - name: Upload artifacts
+      - name: Stage Win64 WebView artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path release\windows-webview | Out-Null
+          $version = node -p "require('./package.json').version"
+          $displayVersion = "1.01.1"
+          $nsis = Get-ChildItem -Path src-tauri\target\release\bundle\nsis -Filter *.exe -File | Select-Object -First 1
+          if (-not $nsis) {
+            throw "Win64 WebView NSIS installer was not generated."
+          }
+          Copy-Item $nsis.FullName "release\windows-webview\HAM-Checkin-$displayVersion-Win64-WebView-Setup.exe"
+          $blockmap = Get-ChildItem -Path src-tauri\target\release\bundle\nsis -Filter *.nsis.zip -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($blockmap) {
+            Copy-Item $blockmap.FullName "release\windows-webview\HAM-Checkin-$displayVersion-Win64-WebView-Setup.nsis.zip"
+          }
+          Get-FileHash release\windows-webview\* -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content "release\windows-webview\SHA256SUMS-Win64-WebView-$displayVersion.txt"
+          Get-ChildItem release\windows-webview
+
+      - name: Upload Win64 WebView artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ham-checkin-win64
-          path: |
-            release/*.exe
-            release/*.blockmap
+          name: ham-checkin-win64-webview
+          path: release/windows-webview/*
+
+  build-win7-legacy:
+    name: Build Win7 x64 legacy package
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pin Electron legacy runtime
+        run: npm install --no-save electron@22.3.27
+
+      - name: Build Win7 x64 legacy package
+        run: npx electron-builder --win nsis --x64 --publish never --config.nsis.artifactName='HAM-Checkin-1.01.1-Win7-Legacy-x64-Setup.${ext}'
+
+      - name: Stage Win7 legacy artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path release\windows-win7-legacy | Out-Null
+          Copy-Item release\HAM-Checkin-1.01.1-Win7-Legacy-x64-Setup.exe release\windows-win7-legacy\
+          $blockmap = Get-ChildItem -Path release -Filter HAM-Checkin-1.01.1-Win7-Legacy-x64-Setup.exe.blockmap -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($blockmap) {
+            Copy-Item $blockmap.FullName release\windows-win7-legacy\
+          }
+          Get-FileHash release\windows-win7-legacy\* -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content release\windows-win7-legacy\SHA256SUMS-Win7-Legacy-1.01.1.txt
+          Get-ChildItem release\windows-win7-legacy
+
+      - name: Upload Win7 legacy artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ham-checkin-win7-legacy
+          path: release/windows-win7-legacy/*
