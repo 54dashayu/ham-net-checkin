@@ -4,9 +4,9 @@
 
 ## 当前测试版
 
-V1.01.1 转向 WebView 本地版试制：公网 VPS 版继续作为纯网页入口，本地版使用系统 WebView 打开同一套前端，并内置本地 MMDVM / HAMBOX / FMO 访问能力。该版本优化了备选区 4 卡片流程、最近 6 个候选高亮、MMDVM TS1/TS2 筛选、主控发射提示、重复记录拦截、Excel / ADIF 导出和中英文说明书。
+V1.01.1 完成本地版与公网 VPS 版同步交付：公网 VPS 版继续作为纯网页入口，本地版内置本地 MMDVM / HAMBOX / FMO 访问能力。该版本优化了备选区 4 卡片流程、最近 6 个候选高亮、MMDVM TS1/TS2 筛选、主控发射提示、重复记录拦截、Excel / ADIF 导出和中英文说明书。
 
-本地 Web/VPS 包位于 `release/v1.01.1/HAM-Checkin-1.01.1-web.tar.gz`，macOS WebView 试制包位于 `release/v1.01.1/`。Win64 WebView 安装包建议通过 GitHub Actions / Windows 环境构建。
+本地 Web/VPS 包位于 `release/v1.01.1/HAM-Checkin-1.01.1-web.tar.gz`，桌面安装包位于 `release/v1.01.1/`。Win64 安装包建议通过 GitHub Actions / Windows 环境构建。
 
 ## 当前功能
 

@@ -91,7 +91,7 @@ const i18nMessages = {
     localVersionContact: '本地版下载',
     desktopDownloadTitle: '下载本地版',
     desktopDownloadHint: '本地版支持完整监听源与本地设备接入。请选择适合系统的版本下载。',
-    desktopDownloadWin64: 'Win64 WebView 轻量版',
+    desktopDownloadWin64: 'Win64 安装版',
     desktopDownloadMacOS: 'MacOS 版本',
     desktopDownloadWin7: 'Win7 64 位兼容版',
     desktopDownloadChecksum: '下载校验文件',
@@ -218,7 +218,7 @@ const i18nMessages = {
     localVersionContact: 'Desktop Download',
     desktopDownloadTitle: 'Download Desktop App',
     desktopDownloadHint: 'The desktop app supports full monitor sources and local device access. Choose the build for your system.',
-    desktopDownloadWin64: 'Win64 WebView build',
+    desktopDownloadWin64: 'Win64 installer',
     desktopDownloadMacOS: 'MacOS version',
     desktopDownloadWin7: 'Win7 64-bit legacy build',
     desktopDownloadChecksum: 'Checksum file',
@@ -351,11 +351,11 @@ const userManualUrl = computed(() =>
 const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadWin64'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Win64-WebView-Setup.exe'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Win64-Setup.exe'
   },
   {
     label: t('desktopDownloadMacOS'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-macOS-WebView.dmg'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-macOS.dmg'
   },
   {
     label: t('desktopDownloadWin7'),

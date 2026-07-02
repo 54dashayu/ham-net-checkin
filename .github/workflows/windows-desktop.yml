@@ -7,8 +7,8 @@ on:
       - 'desktop-v*'
 
 jobs:
-  build-win64-webview:
-    name: Build Win64 WebView package
+  build-win64:
+    name: Build Win64 package
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -26,35 +26,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Win64 WebView package
+      - name: Build Win64 package
         run: npm run webview:build -- --bundles nsis
 
-      - name: Stage Win64 WebView artifacts
+      - name: Stage Win64 artifacts
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          New-Item -ItemType Directory -Force -Path release\windows-webview | Out-Null
+          New-Item -ItemType Directory -Force -Path release\windows-win64 | Out-Null
           $version = node -p "require('./package.json').version"
           $displayVersion = "1.01.1"
           $nsis = Get-ChildItem -Path src-tauri\target\release\bundle\nsis -Filter *.exe -File | Select-Object -First 1
           if (-not $nsis) {
-            throw "Win64 WebView NSIS installer was not generated."
+            throw "Win64 NSIS installer was not generated."
           }
-          Copy-Item $nsis.FullName "release\windows-webview\HAM-Checkin-$displayVersion-Win64-WebView-Setup.exe"
+          Copy-Item $nsis.FullName "release\windows-win64\HAM-Checkin-$displayVersion-Win64-Setup.exe"
           $blockmap = Get-ChildItem -Path src-tauri\target\release\bundle\nsis -Filter *.nsis.zip -File -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($blockmap) {
-            Copy-Item $blockmap.FullName "release\windows-webview\HAM-Checkin-$displayVersion-Win64-WebView-Setup.nsis.zip"
+            Copy-Item $blockmap.FullName "release\windows-win64\HAM-Checkin-$displayVersion-Win64-Setup.nsis.zip"
           }
-          Get-FileHash release\windows-webview\* -Algorithm SHA256 |
+          Get-FileHash release\windows-win64\* -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
-            Set-Content "release\windows-webview\SHA256SUMS-Win64-WebView-$displayVersion.txt"
-          Get-ChildItem release\windows-webview
+            Set-Content "release\windows-win64\SHA256SUMS-Win64-$displayVersion.txt"
+          Get-ChildItem release\windows-win64
 
-      - name: Upload Win64 WebView artifacts
+      - name: Upload Win64 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ham-checkin-win64-webview
-          path: release/windows-webview/*
+          name: ham-checkin-win64
+          path: release/windows-win64/*
 
   build-win7-legacy:
     name: Build Win7 x64 legacy package
