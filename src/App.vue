@@ -350,6 +350,7 @@ const i18nText = (zh, en) => (language.value === 'en' ? en : zh)
 const userManualUrl = computed(() =>
   `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v1.01.1-user-manual-en.html' : 'ham-checkin-v1.01.1-user-manual.html'}`
 )
+const localProxyDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Local-Proxy.zip'
 const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadWin64'),
@@ -361,7 +362,7 @@ const desktopDownloadLinks = computed(() => [
   },
   {
     label: t('desktopDownloadLocalProxy'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Local-Proxy.zip'
+    href: localProxyDownloadUrl
   },
   {
     label: t('desktopDownloadChecksum'),
@@ -4506,15 +4507,16 @@ onUnmounted(() => {
             >
               {{ !hasApprovedProfileAccess ? t('localProxyApprovalRequired') : localProxyStatusText }}
             </span>
-            <button
+            <a
               v-if="hasApprovedProfileAccess && localProxyStatus !== 'connected'"
-              type="button"
               class="tool-button compact-proxy-button"
-              :disabled="localProxyStatus === 'checking'"
-              @click="desktopDownloadOpen = true"
+              :class="{ disabled: localProxyStatus === 'checking' }"
+              :href="localProxyDownloadUrl"
+              target="_blank"
+              rel="noopener"
             >
               {{ t('localProxySetup') }}
-            </button>
+            </a>
           </div>
           <p v-if="fmoAddressWarning" class="field-hint">{{ fmoAddressWarning }}</p>
 

@@ -1005,12 +1005,13 @@ h2 {
   align-items: center;
   background: #eef7f2;
   border: 1px solid #b7d8c6;
-  border-radius: 7px;
+  border-radius: 5px;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   grid-template-columns: max-content 1fr max-content;
-  margin-top: 8px;
-  padding: 7px 9px;
+  margin-top: 5px;
+  min-height: 30px;
+  padding: 3px 7px;
 }
 
 .local-proxy-label {
@@ -1023,14 +1024,15 @@ h2 {
 .local-proxy-label,
 .local-proxy-status {
   color: #40514a;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 900;
   white-space: nowrap;
 }
 
 .compact-proxy-button {
-  min-height: 32px;
-  padding: 5px 10px;
+  font-size: 12px;
+  min-height: 26px;
+  padding: 3px 8px;
 }
 
 .local-proxy-status.connected {
@@ -1226,6 +1228,7 @@ h2 {
   gap: 7px;
   justify-content: center;
   padding: 7px 10px;
+  text-decoration: none;
 }
 
 .icon-button {
@@ -1234,9 +1237,11 @@ h2 {
   width: 36px;
 }
 
-.tool-button:disabled {
+.tool-button:disabled,
+.tool-button.disabled {
   cursor: not-allowed;
   opacity: 0.6;
+  pointer-events: none;
 }
 
 .danger {
