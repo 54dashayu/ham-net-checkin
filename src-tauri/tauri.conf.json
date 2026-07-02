@@ -55,6 +55,8 @@
     "macOS": {
       "minimumSystemVersion": "10.15",
       "infoPlist": "Info.plist",
+      "signingIdentity": "Developer ID Application: Feng Yu (NJFQ3H2HNZ)",
+      "hardenedRuntime": true,
       "dmg": {
         "appPosition": {
           "x": 180,
