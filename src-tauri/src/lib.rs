@@ -303,10 +303,34 @@ fn send_response(stream: &mut TcpStream, status: u16, content_type: &str, body: 
 
 fn dist_dir() -> PathBuf {
   if let Ok(exe_path) = std::env::current_exe() {
-    if let Some(contents_dir) = exe_path.parent().and_then(|path| path.parent()) {
-      let bundled = contents_dir.join("Resources").join("dist");
-      if bundled.exists() {
-        return bundled;
+    if let Some(exe_dir) = exe_path.parent() {
+      let candidates = [
+        exe_dir.join("resources").join("dist"),
+        exe_dir.join("dist"),
+        exe_dir.join("..").join("Resources").join("dist"),
+      ];
+      for candidate in candidates {
+        if candidate.join("index.html").exists() {
+          return candidate;
+        }
+      }
+      if let Some(contents_dir) = exe_dir.parent() {
+        let candidate = contents_dir.join("Resources").join("dist");
+        if candidate.join("index.html").exists() {
+          return candidate;
+        }
+      }
+    }
+  }
+
+  if let Ok(current_dir) = std::env::current_dir() {
+    let candidates = [
+      current_dir.join("resources").join("dist"),
+      current_dir.join("dist"),
+    ];
+    for candidate in candidates {
+      if candidate.join("index.html").exists() {
+        return candidate;
       }
     }
   }
