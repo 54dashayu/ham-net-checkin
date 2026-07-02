@@ -92,8 +92,8 @@ const i18nMessages = {
   zh: {
     appTitle: '台网点名主控台',
     localVersionContact: '本地版下载',
-    desktopDownloadTitle: '下载组件',
-    desktopDownloadHint: '浏览器插件用于网页版读取本地设备；本地版支持完整监听源与本地设备接入。',
+    desktopDownloadTitle: '下载本地版',
+    desktopDownloadHint: '本地版支持完整监听源与本地设备接入。请选择适合系统的版本下载。',
     desktopDownloadWin64: 'Win64 安装版',
     desktopDownloadMacOS: 'MacOS 版本',
     desktopDownloadBrowserBridge: '浏览器插件',
@@ -161,6 +161,8 @@ const i18nMessages = {
     browserBridgeStatusReady: '插件已连接',
     browserBridgeStatusMissing: '插件未启用',
     browserBridgeStatusChecking: '插件检测中',
+    browserBridgeButton: '插件',
+    browserBridgeOpenDownload: '浏览器插件下载与安装说明',
     localProxyHint: '用于网页版读取本地 FMO / MMDVM / HAMBOX',
     localProxyApprovalRequired: '网页版本地设备访问需注册并通过作者审核',
     protocol: '协议',
@@ -224,8 +226,8 @@ const i18nMessages = {
   en: {
     appTitle: 'Net Check-in Console',
     localVersionContact: 'Desktop Download',
-    desktopDownloadTitle: 'Download Components',
-    desktopDownloadHint: 'The browser extension lets the web app read local devices; the desktop app supports full monitor sources and local device access.',
+    desktopDownloadTitle: 'Download Desktop App',
+    desktopDownloadHint: 'The desktop app supports full monitor sources and local device access. Choose the build for your system.',
     desktopDownloadWin64: 'Win64 installer',
     desktopDownloadMacOS: 'MacOS version',
     desktopDownloadBrowserBridge: 'Browser extension',
@@ -293,6 +295,8 @@ const i18nMessages = {
     browserBridgeStatusReady: 'Extension connected',
     browserBridgeStatusMissing: 'Extension not enabled',
     browserBridgeStatusChecking: 'Checking extension',
+    browserBridgeButton: 'Plugin',
+    browserBridgeOpenDownload: 'Browser extension download and setup',
     localProxyHint: 'For web access to local FMO / MMDVM / HAMBOX',
     localProxyApprovalRequired: 'Web local-device access requires approved registration',
     protocol: 'Protocol',
@@ -363,10 +367,6 @@ const userManualUrl = computed(() =>
 )
 const browserBridgeDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Browser-Bridge.zip'
 const desktopDownloadLinks = computed(() => [
-  {
-    label: t('desktopDownloadBrowserBridge'),
-    href: browserBridgeDownloadUrl
-  },
   {
     label: t('desktopDownloadWin64'),
     href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Win64-Setup.exe'
@@ -1305,11 +1305,9 @@ const needsBrowserBridgeSetup = computed(
 const publicWebTopText = computed(() =>
   needsBrowserBridgeSetup.value ? t('browserBridgeSetupPrompt') : publicWebLimitText.value
 )
-const browserBridgeCompactStatus = computed(() => {
-  if (localProxyStatus.value === 'connected') return t('browserBridgeStatusReady')
-  if (localProxyStatus.value === 'checking') return t('browserBridgeStatusChecking')
-  return t('browserBridgeStatusMissing')
-})
+const browserBridgeButtonTitle = computed(() =>
+  localProxyStatus.value === 'connected' ? t('browserBridgeStatusReady') : t('browserBridgeOpenDownload')
+)
 
 const isPrivateLanAddress = (address) => {
   const host = normalizeHost(address).replace(/:\d+$/g, '').toLowerCase()
@@ -4016,6 +4014,18 @@ onUnmounted(() => {
             <BookOpen :size="17" />
           </button>
           <button
+            v-if="isPublicWebVersion"
+            type="button"
+            class="corner-button bridge-button"
+            :class="{ connected: localProxyStatus === 'connected', checking: localProxyStatus === 'checking' }"
+            :title="browserBridgeButtonTitle"
+            :aria-label="browserBridgeButtonTitle"
+            @click="browserBridgeGuideOpen = true"
+          >
+            <Wifi :size="15" />
+            <span>{{ t('browserBridgeButton') }}</span>
+          </button>
+          <button
             type="button"
             class="corner-button language-button"
             :title="t('switchLanguage')"
@@ -4421,17 +4431,6 @@ onUnmounted(() => {
             <div>
               <h2>{{ currentRelayName }}</h2>
               <p>{{ fmoStatus }}</p>
-              <a
-                v-if="isPublicWebVersion && hasApprovedProfileAccess && isLocalProxyCapableSource"
-                class="bridge-status-pill"
-                :class="{ connected: localProxyStatus === 'connected', checking: localProxyStatus === 'checking' }"
-                :href="localProxyStatus === 'connected' ? undefined : browserBridgeDownloadUrl"
-                :target="localProxyStatus === 'connected' ? undefined : '_blank'"
-                rel="noopener"
-                :title="t('localProxyHint')"
-              >
-                {{ browserBridgeCompactStatus }}
-              </a>
             </div>
             <div
               class="fmo-config"
@@ -4562,9 +4561,10 @@ onUnmounted(() => {
               </button>
             </div>
           </div>
-          <p v-if="fmoAddressWarning" class="field-hint">{{ fmoAddressWarning }}</p>
-
           <div class="fmo-list-wrap">
+            <p v-if="fmoAddressWarning" class="fmo-inline-warning" :title="fmoAddressWarning">
+              {{ fmoAddressWarning }}
+            </p>
             <table class="fmo-list">
               <colgroup>
                 <col class="callsign-col" />

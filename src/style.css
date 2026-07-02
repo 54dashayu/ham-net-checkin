@@ -271,6 +271,33 @@ h2 {
   color: #165ca8;
 }
 
+.corner-button.bridge-button {
+  background: #fff7ed;
+  border-color: #f0c28b;
+  color: #a15c00;
+  gap: 3px;
+  padding: 0 6px;
+  width: auto;
+}
+
+.bridge-button span {
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.corner-button.bridge-button.connected {
+  background: #0a8f36;
+  border-color: #04722a;
+  color: #fff;
+}
+
+.corner-button.bridge-button.checking {
+  background: #eef6ff;
+  border-color: #b7d4f4;
+  color: #2161a6;
+}
+
 .corner-button:hover {
   filter: brightness(1.06);
   transform: translateY(-1px);
@@ -1004,43 +1031,35 @@ h2 {
   font-weight: 900;
 }
 
-.bridge-status-pill {
-  align-items: center;
-  margin-top: 4px;
-  background: #fff7ed;
-  border: 1px solid #f0c28b;
-  border-radius: 999px;
-  color: #a15c00;
-  display: inline-flex;
-  font-size: 11px;
-  font-weight: 900;
-  justify-content: center;
-  min-height: 22px;
-  padding: 2px 8px;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.bridge-status-pill.connected {
-  background: #ecfdf3;
-  border-color: #a9dbc0;
-  color: var(--green);
-  pointer-events: none;
-}
-
-.bridge-status-pill.checking {
-  background: #eef6ff;
-  border-color: #b7d4f4;
-  color: #2161a6;
-  pointer-events: none;
-}
-
 .fmo-list-wrap {
   border: 1px solid var(--line);
   border-radius: 8px;
   height: 100%;
   min-height: 0;
   overflow: auto;
+  position: relative;
+}
+
+.fmo-inline-warning {
+  background: rgba(255, 248, 230, 0.94);
+  border: 1px solid rgba(220, 166, 0, 0.32);
+  border-radius: 6px;
+  color: #a07000;
+  font-size: 11px;
+  font-weight: 800;
+  left: 8px;
+  line-height: 15px;
+  margin: 0;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  padding: 3px 7px;
+  pointer-events: none;
+  position: absolute;
+  right: 8px;
+  text-overflow: ellipsis;
+  top: 6px;
+  white-space: nowrap;
+  z-index: 2;
 }
 
 .fmo-list tr {
