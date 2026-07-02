@@ -21,6 +21,7 @@ import {
 import ExcelJS from 'exceljs'
 import initSqlJs from 'sql.js'
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url'
+import { BrowserBridgeWebSocket, detectBrowserBridge } from './services/browserBridge'
 import {
   FmoClient,
   FmoEventsClient,
@@ -95,6 +96,7 @@ const i18nMessages = {
     desktopDownloadHint: '本地代理包用于网页版读取本地设备；本地版支持完整监听源与本地设备接入。',
     desktopDownloadWin64: 'Win64 安装版',
     desktopDownloadMacOS: 'MacOS 版本',
+    desktopDownloadBrowserBridge: '浏览器插件',
     desktopDownloadLocalProxy: '本地代理包',
     desktopDownloadChecksum: '下载校验文件',
     recorded: '已记录',
@@ -155,6 +157,10 @@ const i18nMessages = {
     localProxyConnected: '本地代理已连接',
     localProxyDisconnected: '本地代理未启用',
     localProxySetup: '下载启用',
+    browserBridgeSetupPrompt: '已导入验证密钥。访问本地 FMO / MMDVM / HAMBOX 前，请下载并启用 Chrome / Edge 浏览器插件。',
+    browserBridgeStatusReady: '插件已连接',
+    browserBridgeStatusMissing: '插件未启用',
+    browserBridgeStatusChecking: '插件检测中',
     localProxyHint: '用于网页版读取本地 FMO / MMDVM / HAMBOX',
     localProxyApprovalRequired: '网页版本地设备访问需注册并通过作者审核',
     protocol: '协议',
@@ -222,6 +228,7 @@ const i18nMessages = {
     desktopDownloadHint: 'The local proxy package lets the web app read local devices; the desktop app supports full monitor sources and local device access.',
     desktopDownloadWin64: 'Win64 installer',
     desktopDownloadMacOS: 'MacOS version',
+    desktopDownloadBrowserBridge: 'Browser extension',
     desktopDownloadLocalProxy: 'Local proxy package',
     desktopDownloadChecksum: 'Checksum file',
     recorded: 'Logged',
@@ -282,6 +289,10 @@ const i18nMessages = {
     localProxyConnected: 'Local proxy connected',
     localProxyDisconnected: 'Local proxy not enabled',
     localProxySetup: 'Download / enable',
+    browserBridgeSetupPrompt: 'Verification key imported. Download and enable the Chrome / Edge extension before accessing local FMO / MMDVM / HAMBOX devices.',
+    browserBridgeStatusReady: 'Extension connected',
+    browserBridgeStatusMissing: 'Extension not enabled',
+    browserBridgeStatusChecking: 'Checking extension',
     localProxyHint: 'For web access to local FMO / MMDVM / HAMBOX',
     localProxyApprovalRequired: 'Web local-device access requires approved registration',
     protocol: 'Protocol',
@@ -350,8 +361,13 @@ const i18nText = (zh, en) => (language.value === 'en' ? en : zh)
 const userManualUrl = computed(() =>
   `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v1.01.1-user-manual-en.html' : 'ham-checkin-v1.01.1-user-manual.html'}`
 )
+const browserBridgeDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Browser-Bridge.zip'
 const localProxyDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Local-Proxy.zip'
 const desktopDownloadLinks = computed(() => [
+  {
+    label: t('desktopDownloadBrowserBridge'),
+    href: browserBridgeDownloadUrl
+  },
   {
     label: t('desktopDownloadWin64'),
     href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Win64-Setup.exe'
@@ -508,6 +524,7 @@ const monitorRequestId = ref(0)
 const currentLiveCallsign = ref('')
 const localProxyStatus = ref('unknown')
 const localProxyCheckedAt = ref(0)
+const browserBridgeAvailable = ref(false)
 const previousMonitorSource = ref('fmo')
 const bmDeviceCache = new Map()
 const mmdvmTimeslotTargets = reactive({
@@ -1125,8 +1142,13 @@ const getClientEdition = () => {
 }
 
 const localProxyFetchOptions = () => ({
-  preferLocalProxy: canUseLocalProxyForCurrentSource.value,
-  localProxyUrl: normalizeLocalProxyUrl()
+  preferBrowserBridge: canUseLocalProxyForCurrentSource.value && browserBridgeAvailable.value,
+  preferLocalProxy: canUseLocalProxyForCurrentSource.value && !browserBridgeAvailable.value,
+  localProxyUrl: normalizeLocalProxyUrl(),
+  webSocketFactory:
+    canUseLocalProxyForCurrentSource.value && browserBridgeAvailable.value
+      ? (url) => new BrowserBridgeWebSocket(url)
+      : null
 })
 
 const checkLocalProxy = async ({ force = false } = {}) => {
@@ -1143,6 +1165,21 @@ const checkLocalProxy = async ({ force = false } = {}) => {
     return true
   }
   localProxyStatus.value = 'checking'
+  if (isPublicWebVersion.value) {
+    browserBridgeAvailable.value = await detectBrowserBridge()
+    if (browserBridgeAvailable.value) {
+      localProxyStatus.value = 'connected'
+      localProxyCheckedAt.value = Date.now()
+      sendClientMetric('local-proxy-check', {
+        status: 'connected',
+        action: force ? 'manual-or-forced' : 'auto',
+        proxyEnabled: true,
+        bridge: 'browser-extension',
+        silent: !force
+      })
+      return true
+    }
+  }
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), 1800)
   try {
@@ -1175,13 +1212,6 @@ const checkLocalProxy = async ({ force = false } = {}) => {
     window.clearTimeout(timer)
   }
 }
-
-const localProxyStatusText = computed(() => {
-  if (!isLocalProxyAutoEnabled.value) return t('localProxyDisconnected')
-  if (localProxyStatus.value === 'connected') return t('localProxyConnected')
-  if (localProxyStatus.value === 'checking') return i18nText('本地代理检测中', 'Checking local proxy')
-  return t('localProxyDisconnected')
-})
 
 const createAnonymousInstallId = () => {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID()
@@ -1269,6 +1299,21 @@ const publicWebLimitText = computed(() =>
       ? `*Trial web version: BM DMR only, 1 activity, up to 80 records, 1 Excel download, 1 ADIF download, 75 minutes. Remaining ${publicTimeRemainingText.value}`
       : `*未注册网络版：仅 BM DMR、1 个活动、最多 80 条记录、Excel 与 ADIF 各下载 1 次、使用 75 分钟。剩余 ${publicTimeRemainingText.value}`
 )
+const needsBrowserBridgeSetup = computed(
+  () =>
+    isPublicWebVersion.value &&
+    hasApprovedProfileAccess.value &&
+    isLocalProxyCapableSource.value &&
+    localProxyStatus.value !== 'connected'
+)
+const publicWebTopText = computed(() =>
+  needsBrowserBridgeSetup.value ? t('browserBridgeSetupPrompt') : publicWebLimitText.value
+)
+const browserBridgeCompactStatus = computed(() => {
+  if (localProxyStatus.value === 'connected') return t('browserBridgeStatusReady')
+  if (localProxyStatus.value === 'checking') return t('browserBridgeStatusChecking')
+  return t('browserBridgeStatusMissing')
+})
 
 const isPrivateLanAddress = (address) => {
   const host = normalizeHost(address).replace(/:\d+$/g, '').toLowerCase()
@@ -3899,8 +3944,16 @@ onUnmounted(() => {
 <template>
   <main class="app-shell" :class="{ 'has-public-bar': isPublicWebVersion }">
     <div v-if="isPublicWebVersion" class="public-limit-bar">
-      <span>{{ publicWebLimitText }}</span>
-      <button type="button" @click="desktopDownloadOpen = true">{{ t('localVersionContact') }}</button>
+      <span>{{ publicWebTopText }}</span>
+      <a
+        v-if="needsBrowserBridgeSetup"
+        :href="browserBridgeDownloadUrl"
+        target="_blank"
+        rel="noopener"
+      >
+        {{ t('localProxySetup') }}
+      </a>
+      <button v-else type="button" @click="desktopDownloadOpen = true">{{ t('localVersionContact') }}</button>
     </div>
     <section class="activity-band">
       <div class="brand-block">
@@ -4497,26 +4550,18 @@ onUnmounted(() => {
                 <RefreshCw :size="18" :class="{ spinning: fmoRefreshing }" />
                 <span>{{ t('refresh') }}</span>
               </button>
+              <a
+                v-if="isPublicWebVersion && hasApprovedProfileAccess && isLocalProxyCapableSource"
+                class="bridge-status-pill"
+                :class="{ connected: localProxyStatus === 'connected', checking: localProxyStatus === 'checking' }"
+                :href="localProxyStatus === 'connected' ? undefined : browserBridgeDownloadUrl"
+                :target="localProxyStatus === 'connected' ? undefined : '_blank'"
+                rel="noopener"
+                :title="t('localProxyHint')"
+              >
+                {{ browserBridgeCompactStatus }}
+              </a>
             </div>
-          </div>
-          <div v-if="isPublicWebVersion" class="local-proxy-strip">
-            <span class="local-proxy-label" :title="t('localProxyHint')">{{ t('localProxy') }}</span>
-            <span
-              class="local-proxy-status"
-              :class="{ connected: localProxyStatus === 'connected', blocked: !hasApprovedProfileAccess }"
-            >
-              {{ !hasApprovedProfileAccess ? t('localProxyApprovalRequired') : localProxyStatusText }}
-            </span>
-            <a
-              v-if="hasApprovedProfileAccess && localProxyStatus !== 'connected'"
-              class="tool-button compact-proxy-button"
-              :class="{ disabled: localProxyStatus === 'checking' }"
-              :href="localProxyDownloadUrl"
-              target="_blank"
-              rel="noopener"
-            >
-              {{ t('localProxySetup') }}
-            </a>
           </div>
           <p v-if="fmoAddressWarning" class="field-hint">{{ fmoAddressWarning }}</p>
 

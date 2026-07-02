@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "HAM Local Device Bridge",
+  "description": "Allow HAM Check-in web console to read approved local FMO, MMDVM and HAMBOX devices.",
+  "version": "1.01.1",
+  "action": {
+    "default_title": "HAM Local Device Bridge"
+  },
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://fmo.bh1jss.net/checkin*"
+      ],
+      "js": ["content-script.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "ws://*/*",
+    "wss://*/*"
+  ],
+  "permissions": []
+}

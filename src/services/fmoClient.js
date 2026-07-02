@@ -83,11 +83,12 @@ export function getAddressWarning(host, protocol = 'ws') {
 }
 
 export class FmoClient {
-  constructor({ host, protocol = 'ws', preferLocalProxy = false, localProxyUrl = '' }) {
+  constructor({ host, protocol = 'ws', preferLocalProxy = false, localProxyUrl = '', webSocketFactory = null }) {
     this.host = normalizeHost(host)
     this.protocol = protocol === 'wss' ? 'wss' : 'ws'
     this.preferLocalProxy = Boolean(preferLocalProxy)
     this.localProxyUrl = localProxyUrl
+    this.webSocketFactory = webSocketFactory
     this.socket = null
     this.connectPromise = null
     this.pending = new Map()
@@ -105,7 +106,7 @@ export class FmoClient {
         : directWsUrl
     this.connectPromise = new Promise((resolve, reject) => {
       try {
-        this.socket = new WebSocket(wsUrl)
+        this.socket = this.webSocketFactory ? this.webSocketFactory(wsUrl) : new WebSocket(wsUrl)
       } catch (error) {
         this.connectPromise = null
         reject(error)
@@ -221,11 +222,12 @@ export class FmoClient {
 }
 
 export class FmoEventsClient {
-  constructor({ host, protocol = 'ws', onEvent = null, onStatus = null, reconnectMs = 5000, preferLocalProxy = false, localProxyUrl = '' }) {
+  constructor({ host, protocol = 'ws', onEvent = null, onStatus = null, reconnectMs = 5000, preferLocalProxy = false, localProxyUrl = '', webSocketFactory = null }) {
     this.host = normalizeHost(host)
     this.protocol = protocol === 'wss' ? 'wss' : 'ws'
     this.preferLocalProxy = Boolean(preferLocalProxy)
     this.localProxyUrl = localProxyUrl
+    this.webSocketFactory = webSocketFactory
     this.onEvent = onEvent
     this.onStatus = onStatus
     this.reconnectMs = reconnectMs
@@ -247,7 +249,7 @@ export class FmoEventsClient {
         : directWsUrl
     this.connectPromise = new Promise((resolve, reject) => {
       try {
-        this.socket = new WebSocket(wsUrl)
+        this.socket = this.webSocketFactory ? this.webSocketFactory(wsUrl) : new WebSocket(wsUrl)
       } catch (error) {
         this.connectPromise = null
         reject(error)

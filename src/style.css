@@ -84,7 +84,8 @@ button {
   white-space: nowrap;
 }
 
-.public-limit-bar button {
+.public-limit-bar button,
+.public-limit-bar a {
   appearance: none;
   background: #fff;
   border: 1px solid rgba(200, 59, 50, 0.35);
@@ -94,10 +95,12 @@ button {
   font-size: 12px;
   font-weight: 900;
   padding: 3px 8px;
+  text-decoration: none;
   white-space: nowrap;
 }
 
-.public-limit-bar button:hover {
+.public-limit-bar button:hover,
+.public-limit-bar a:hover {
   background: #ffeceb;
 }
 
@@ -914,7 +917,7 @@ h2 {
   display: grid;
   gap: 6px;
   flex: 1 1 640px;
-  grid-template-columns: minmax(132px, 158px) minmax(190px, 1fr) 68px 64px 74px;
+  grid-template-columns: minmax(132px, 158px) minmax(190px, 1fr) 68px 64px 74px max-content;
   justify-content: end;
   margin-left: auto;
   min-width: 0;
@@ -923,14 +926,14 @@ h2 {
 
 .fmo-config.compact {
   flex-basis: 600px;
-  grid-template-columns: minmax(132px, 170px) minmax(210px, 1fr) 64px 74px;
+  grid-template-columns: minmax(132px, 170px) minmax(210px, 1fr) 64px 74px max-content;
   max-width: 700px;
   min-width: 0;
 }
 
 .fmo-config.compact.has-timeslot {
   flex-basis: 680px;
-  grid-template-columns: minmax(76px, 88px) minmax(124px, 154px) minmax(190px, 1fr) 64px 74px;
+  grid-template-columns: minmax(76px, 88px) minmax(124px, 154px) minmax(190px, 1fr) 64px 74px max-content;
   max-width: 760px;
 }
 
@@ -1001,46 +1004,35 @@ h2 {
   font-weight: 900;
 }
 
-.local-proxy-strip {
+.bridge-status-pill {
   align-items: center;
-  background: #eef7f2;
-  border: 1px solid #b7d8c6;
-  border-radius: 5px;
-  display: grid;
-  gap: 6px;
-  grid-template-columns: max-content 1fr max-content;
-  margin-top: 5px;
-  min-height: 30px;
-  padding: 3px 7px;
-}
-
-.local-proxy-label {
-  align-items: center;
+  align-self: end;
+  background: #fff7ed;
+  border: 1px solid #f0c28b;
+  border-radius: 999px;
+  color: #a15c00;
   display: inline-flex;
-  gap: 7px;
-  min-width: 0;
-}
-
-.local-proxy-label,
-.local-proxy-status {
-  color: #40514a;
   font-size: 11px;
   font-weight: 900;
+  justify-content: center;
+  min-height: 26px;
+  padding: 3px 8px;
+  text-decoration: none;
   white-space: nowrap;
 }
 
-.compact-proxy-button {
-  font-size: 12px;
-  min-height: 26px;
-  padding: 3px 8px;
-}
-
-.local-proxy-status.connected {
+.bridge-status-pill.connected {
+  background: #ecfdf3;
+  border-color: #a9dbc0;
   color: var(--green);
+  pointer-events: none;
 }
 
-.local-proxy-status.blocked {
-  color: #b35b00;
+.bridge-status-pill.checking {
+  background: #eef6ff;
+  border-color: #b7d4f4;
+  color: #2161a6;
+  pointer-events: none;
 }
 
 .fmo-list-wrap {

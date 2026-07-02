@@ -1,4 +1,5 @@
 import { normalizeHost } from './fmoClient'
+import { fetchTextViaBrowserBridge } from './browserBridge'
 
 export function buildHamboxDataUrl(host) {
   const normalizedHost = normalizeHost(host)
@@ -51,6 +52,7 @@ function buildLocalProxyUrl(localProxyUrl, directUrl) {
 }
 
 async function fetchJsonWithLocalProxy(directUrl, options = {}) {
+  if (options.preferBrowserBridge) return JSON.parse(await fetchTextViaBrowserBridge(directUrl))
   const localProxyUrl = buildLocalProxyUrl(options.localProxyUrl, directUrl)
   const urls = options.preferLocalProxy && localProxyUrl
     ? [localProxyUrl, ...(isLocalOrigin() ? [`/mmdvm-proxy?url=${encodeURIComponent(directUrl)}`] : [directUrl, `/mmdvm-proxy?url=${encodeURIComponent(directUrl)}`])]
