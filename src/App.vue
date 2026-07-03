@@ -1304,19 +1304,6 @@ const publicWebLimitText = computed(() =>
       ? `*Trial web version: BM DMR only, 1 activity, up to 80 records, 1 Excel download, 1 ADIF download, 75 minutes. Remaining ${publicTimeRemainingText.value}`
       : `*未注册网络版：仅 BM DMR、1 个活动、最多 80 条记录、Excel 与 ADIF 各下载 1 次、使用 75 分钟。剩余 ${publicTimeRemainingText.value}`
 )
-const directExperimentTopText = computed(() => {
-  if (!isDirectLocalExperimentWeb.value) return ''
-  if (window.location.protocol === 'https:') {
-    return i18nText(
-      '*直连测试：当前 HTTPS 页面会拦截局域网 HTTP/WS。请复制打开 http://fmo.bh1jss.net/checkin1/；如浏览器自动升级 HTTPS，请关闭“始终使用安全连接”或使用本地版。',
-      '*Direct test: this HTTPS page can block LAN HTTP/WS. Open http://fmo.bh1jss.net/checkin1/; if your browser upgrades it to HTTPS, disable "Always use secure connections" or use the desktop app.'
-    )
-  }
-  return i18nText(
-    '*直连测试：FMO 建议使用 ws；MMDVM/HAMBOX 若设备未开放 CORS，浏览器仍会阻止读取。',
-    '*Direct test: use ws for FMO when possible. MMDVM/HAMBOX still need device CORS permission for browser reads.'
-  )
-})
 const needsBrowserBridgeSetup = computed(
   () =>
     isPublicWebVersion.value &&
@@ -1325,8 +1312,7 @@ const needsBrowserBridgeSetup = computed(
     localProxyStatus.value !== 'connected'
 )
 const publicWebTopText = computed(() =>
-  directExperimentTopText.value ||
-  (needsBrowserBridgeSetup.value ? t('browserBridgeSetupPrompt') : publicWebLimitText.value)
+  needsBrowserBridgeSetup.value ? t('browserBridgeSetupPrompt') : publicWebLimitText.value
 )
 const browserBridgeButtonTitle = computed(() =>
   localProxyStatus.value === 'connected' ? t('browserBridgeStatusReady') : t('browserBridgeOpenDownload')
@@ -1373,25 +1359,6 @@ const showNotice = (message, position = 'bottom') => {
     notice.value = ''
     noticePosition.value = 'bottom'
   }, 2600)
-}
-
-const formatDirectMonitorError = (source, error) => {
-  const message = String(error?.message || '')
-  if (!isDirectLocalExperimentWeb.value) return message
-  if (source === 'fmo') {
-    return i18nText(
-      `FMO 直连失败：${message || 'WebSocket 连接失败'}。WSS 需要证书被浏览器信任，并确认端口和 /events、/ws 路径可用；HTTP 测试入口可优先试 ws。`,
-      `FMO direct connection failed: ${message || 'WebSocket failed'}. WSS requires a browser-trusted certificate and valid port plus /events or /ws paths; try ws on the HTTP test page.`
-    )
-  }
-  if (/failed to fetch|networkerror|load failed/i.test(message)) {
-    const label = source === 'hambox' ? 'HAMBOX' : 'MMDVM'
-    return i18nText(
-      `${label} 直连被浏览器阻止：设备页面可访问不等于网页可读取数据。请使用 HTTP 测试入口；若仍失败，说明设备未开放 CORS，需要本地版或浏览器插件。`,
-      `${label} direct read was blocked by the browser. A device page can be reachable while web data reads are still denied. Use the HTTP test page; if it still fails, the device needs CORS, the desktop app, or the browser extension.`
-    )
-  }
-  return message
 }
 
 const loadPublicSession = () => {
@@ -2862,7 +2829,7 @@ const refreshFmoCandidates = async () => {
     console.error(error)
     closeFmoClient()
     fmoStatus.value = i18nText('连接失败', 'Connection failed')
-    showNotice(formatDirectMonitorError('fmo', error) || i18nText('FMO 连接失败', 'FMO connection failed.'))
+    showNotice(error?.message || i18nText('FMO 连接失败', 'FMO connection failed.'))
   } finally {
     if (isCurrentMonitorRequest(requestId, 'fmo')) fmoRefreshing.value = false
   }
@@ -2921,7 +2888,7 @@ const refreshMmdvmCandidates = async () => {
     if (!isCurrentMonitorRequest(requestId, 'mmdvm')) return
     console.error(error)
     fmoStatus.value = i18nText('MMDVM 读取失败', 'MMDVM read failed')
-    showNotice(formatDirectMonitorError('mmdvm', error) || i18nText('MMDVM 页面读取失败', 'Failed to read MMDVM page.'))
+    showNotice(error?.message || i18nText('MMDVM 页面读取失败', 'Failed to read MMDVM page.'))
   } finally {
     if (isCurrentMonitorRequest(requestId, 'mmdvm')) fmoRefreshing.value = false
   }
@@ -2963,7 +2930,7 @@ const refreshHamboxCandidates = async () => {
     if (!isCurrentMonitorRequest(requestId, 'hambox')) return
     console.error(error)
     fmoStatus.value = i18nText('HAMBOX 读取失败', 'HAMBOX read failed')
-    showNotice(formatDirectMonitorError('hambox', error) || i18nText('HAMBOX 数据读取失败', 'Failed to read HAMBOX data.'))
+    showNotice(error?.message || i18nText('HAMBOX 数据读取失败', 'Failed to read HAMBOX data.'))
   } finally {
     if (isCurrentMonitorRequest(requestId, 'hambox')) fmoRefreshing.value = false
   }
