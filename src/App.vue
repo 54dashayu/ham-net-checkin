@@ -73,13 +73,7 @@ const initialActivityId =
   (isBootingLocalWebViewShell() ? localStorage.getItem(LOCAL_ACTIVITY_ID_KEY) || '' : '')
 const currentActivityId = ref(initialActivityId)
 const scopedKey = (key) => (currentActivityId.value ? `${key}:${currentActivityId.value}` : key)
-const publicWebPath = window.location.pathname.startsWith('/checkin1')
-  ? '/checkin1'
-  : window.location.pathname.startsWith('/checkin')
-    ? '/checkin'
-    : ''
-const serverBasePath = publicWebPath ? '/checkin' : ''
-const appAssetBasePath = publicWebPath || serverBasePath
+const serverBasePath = window.location.pathname.startsWith('/checkin') ? '/checkin' : ''
 const serverApiPath = (path) => `${serverBasePath}${path}`
 const getDefaultSharedProfileApiBase = () => {
   const hostname = window.location.hostname
@@ -91,7 +85,7 @@ const getDefaultSharedProfileApiBase = () => {
 const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || getDefaultSharedProfileApiBase()
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
-const authorQrCodeUrl = `${appAssetBasePath}/author-wechat-qrcode.jpg`
+const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
 const appVersion = 'V1.01.1'
 
 const i18nMessages = {
@@ -369,7 +363,7 @@ const language = ref(localStorage.getItem(LANGUAGE_KEY) === 'en' ? 'en' : 'zh')
 const t = (key) => i18nMessages[language.value]?.[key] ?? i18nMessages.zh[key] ?? key
 const i18nText = (zh, en) => (language.value === 'en' ? en : zh)
 const userManualUrl = computed(() =>
-  `${appAssetBasePath}/${language.value === 'en' ? 'ham-checkin-v1.01.1-user-manual-en.html' : 'ham-checkin-v1.01.1-user-manual.html'}`
+  `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v1.01.1-user-manual-en.html' : 'ham-checkin-v1.01.1-user-manual.html'}`
 )
 const browserBridgeDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Browser-Bridge.zip'
 const desktopDownloadLinks = computed(() => [
@@ -1107,16 +1101,14 @@ const isLocalWebOrigin = () => {
 }
 
 const isPublicWebVersion = computed(
-  () => window.location.protocol !== 'file:' && !isLocalWebOrigin() && Boolean(publicWebPath)
+  () => window.location.protocol !== 'file:' && !isLocalWebOrigin() && serverBasePath === '/checkin'
 )
-const isDirectLocalExperimentWeb = computed(() => publicWebPath === '/checkin1')
 const normalizeLocalProxyUrl = () =>
   String(fmoConfig.localProxyUrl || 'http://127.0.0.1:37174').trim().replace(/\/+$/g, '')
 
 const isLocalProxyCapableSource = computed(() => ['fmo', 'mmdvm', 'hambox'].includes(fmoConfig.source))
 const isLocalProxyAutoEnabled = computed(() => {
   if (!isLocalProxyCapableSource.value) return false
-  if (isDirectLocalExperimentWeb.value) return false
   if (isPublicWebVersion.value) return hasApprovedProfileAccess.value
   return Boolean(fmoConfig.localProxyEnabled)
 })
@@ -1334,7 +1326,6 @@ const isPrivateLanAddress = (address) => {
 
 const publicNetworkWarning = computed(() => {
   if (!isPublicWebVersion.value) return ''
-  if (isDirectLocalExperimentWeb.value && isLocalProxyCapableSource.value) return ''
   if (canUseLocalProxyForCurrentSource.value) return ''
   if (isLocalProxyCapableSource.value && !hasApprovedProfileAccess.value) {
     return t('localProxyApprovalRequired')
@@ -1558,7 +1549,7 @@ const loadProfileSyncConfig = () => {
 const loadFmoConfig = () => {
   try {
     const saved = JSON.parse(localStorage.getItem(FMO_CONFIG_KEY) || '{}')
-    const savedSource = isPublicWebVersion.value && !isDirectLocalExperimentWeb.value && !hasApprovedProfileAccess.value
+    const savedSource = isPublicWebVersion.value && !hasApprovedProfileAccess.value
       ? 'bm'
       : monitorSourceByValue[saved.source] ? saved.source : 'fmo'
     Object.assign(fmoConfig, {
@@ -1577,7 +1568,7 @@ const loadFmoConfig = () => {
     })
     previousMonitorSource.value = savedSource
   } catch {
-    const fallbackSource = isPublicWebVersion.value && !isDirectLocalExperimentWeb.value && !hasApprovedProfileAccess.value ? 'bm' : 'fmo'
+    const fallbackSource = isPublicWebVersion.value && !hasApprovedProfileAccess.value ? 'bm' : 'fmo'
     Object.assign(fmoConfig, {
       source: fallbackSource,
       host: '',
@@ -2811,7 +2802,7 @@ const refreshFmoCandidates = async () => {
   const requestId = nextMonitorRequestId()
   fmoRefreshing.value = true
   try {
-    if (isPublicWebVersion.value && !isDirectLocalExperimentWeb.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
+    if (isPublicWebVersion.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
       fmoStatus.value = t('localProxyDisconnected')
       showNotice(i18nText('未检测到浏览器插件，请下载并启用 Chrome / Edge 插件。', 'Browser extension not detected. Download and enable the Chrome / Edge extension.'))
       desktopDownloadOpen.value = true
@@ -2850,7 +2841,7 @@ const refreshMmdvmCandidates = async () => {
   closeFmoClient()
   fmoRefreshing.value = true
   try {
-    if (isPublicWebVersion.value && !isDirectLocalExperimentWeb.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
+    if (isPublicWebVersion.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
       fmoStatus.value = t('localProxyDisconnected')
       showNotice(i18nText('未检测到浏览器插件，请下载并启用 Chrome / Edge 插件。', 'Browser extension not detected. Download and enable the Chrome / Edge extension.'))
       desktopDownloadOpen.value = true
@@ -2909,7 +2900,7 @@ const refreshHamboxCandidates = async () => {
   closeFmoClient()
   fmoRefreshing.value = true
   try {
-    if (isPublicWebVersion.value && !isDirectLocalExperimentWeb.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
+    if (isPublicWebVersion.value && isLocalProxyAutoEnabled.value && !(await checkLocalProxy({ force: true }))) {
       fmoStatus.value = t('localProxyDisconnected')
       showNotice(i18nText('未检测到浏览器插件，请下载并启用 Chrome / Edge 插件。', 'Browser extension not detected. Download and enable the Chrome / Edge extension.'))
       desktopDownloadOpen.value = true
@@ -3875,7 +3866,7 @@ watch(
 watch(
   () => hasApprovedProfileAccess.value,
   (approved) => {
-    if (!isPublicWebVersion.value || isDirectLocalExperimentWeb.value || approved || fmoConfig.source === 'bm') return
+    if (!isPublicWebVersion.value || approved || fmoConfig.source === 'bm') return
     fmoConfig.source = 'bm'
     showNotice(i18nText('未注册网络版仅支持 BM DMR 监听', 'Trial web version only supports BM DMR monitoring.'), 'top')
   }
@@ -4791,7 +4782,7 @@ onUnmounted(() => {
         <div class="about-actions">
           <a class="footer-link" href="https://github.com/54dashayu/ham-net-checkin" target="_blank" rel="noreferrer">
             <svg aria-hidden="true" viewBox="0 0 19 19">
-              <use :href="`${appAssetBasePath}/icons.svg#github-icon`"></use>
+              <use :href="`${serverBasePath}/icons.svg#github-icon`"></use>
             </svg>
             {{ t('githubProject') }}
           </a>
@@ -5011,7 +5002,7 @@ onUnmounted(() => {
       </button>
       <a class="footer-link" href="https://github.com/54dashayu/ham-net-checkin" target="_blank" rel="noreferrer">
         <svg aria-hidden="true" viewBox="0 0 19 19">
-          <use :href="`${appAssetBasePath}/icons.svg#github-icon`"></use>
+          <use :href="`${serverBasePath}/icons.svg#github-icon`"></use>
         </svg>
         {{ t('githubProject') }}
       </a>
