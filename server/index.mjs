@@ -1743,6 +1743,84 @@ function collectPageViews(usage) {
   return usage.filter((item) => item.event === 'page-view')
 }
 
+function collectClientMetricSummary(usage) {
+  const metrics = usage.filter((item) => item.clientMetric)
+  const installs = new Set()
+  const versions = new Map()
+  const platforms = new Map()
+  const editions = new Map()
+  const eventCounts = new Map()
+  const activeInstalls = new Map()
+  let latestAt = ''
+
+  metrics.forEach((item) => {
+    const installKey = item.installId || `${item.ip || '-'}|${item.userAgent || '-'}`
+    if (installKey) installs.add(installKey)
+    if (item.appVersion) versions.set(item.appVersion, (versions.get(item.appVersion) || 0) + 1)
+    if (item.platform) platforms.set(item.platform, (platforms.get(item.platform) || 0) + 1)
+    if (item.edition) editions.set(item.edition, (editions.get(item.edition) || 0) + 1)
+    eventCounts.set(item.event, (eventCounts.get(item.event) || 0) + 1)
+    if (['app-start', 'app-active', 'app-version-check'].includes(item.event)) {
+      const current = activeInstalls.get(installKey)
+      if (!current || String(item.at).localeCompare(String(current.at)) > 0) activeInstalls.set(installKey, item)
+    }
+    if (item.at && String(item.at).localeCompare(latestAt) > 0) latestAt = item.at
+  })
+
+  const productiveEvents = ['excel-export-local', 'adif-export-local', 'new-activity', 'sync-toggle']
+  const issueEvents = ['web-limit-block', 'local-proxy-check']
+  return {
+    total: metrics.length,
+    installs: installs.size,
+    activeInstalls: activeInstalls.size,
+    appStarts: eventCounts.get('app-start') || 0,
+    appActives: eventCounts.get('app-active') || 0,
+    excelExports: eventCounts.get('excel-export-local') || 0,
+    adifExports: eventCounts.get('adif-export-local') || 0,
+    newActivities: eventCounts.get('new-activity') || 0,
+    syncToggles: eventCounts.get('sync-toggle') || 0,
+    webLimitBlocks: eventCounts.get('web-limit-block') || 0,
+    proxyChecks: eventCounts.get('local-proxy-check') || 0,
+    productiveEvents: productiveEvents.reduce((sum, event) => sum + (eventCounts.get(event) || 0), 0),
+    issueEvents: issueEvents.reduce((sum, event) => sum + (eventCounts.get(event) || 0), 0),
+    latestAt,
+    versions,
+    platforms,
+    editions
+  }
+}
+
+function mapTopCounts(counts, limit = 8) {
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([name, count]) => ({ name, count }))
+}
+
+function buildClientMetricRows(usage) {
+  return usage
+    .filter((item) => item.clientMetric)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+    .slice(0, 80)
+    .map((item) => ({
+      at: item.at || '',
+      event: item.event || '',
+      version: item.appVersion || '-',
+      edition: item.edition || '-',
+      platform: item.platform || '-',
+      callsign: item.controlCallsign || item.profileCallsign || '-',
+      records: Number(item.recordCount || 0),
+      detail: [
+        item.source ? `源:${item.source}` : '',
+        item.format ? `格式:${item.format}` : '',
+        item.reason ? `原因:${item.reason}` : '',
+        typeof item.enabled === 'boolean' ? `开关:${item.enabled ? '开' : '关'}` : '',
+        item.status ? `状态:${item.status}` : ''
+      ].filter(Boolean).join(' / ') || '-',
+      ip: item.ip || '-'
+    }))
+}
+
 function collectAdminOverview({ checkins, usage, syncEvents, usageStats, downloadStats, downloadSource }) {
   const activeControlCallsigns = [
     ...checkins.map((item) => normalizeMonitorCallsign(item.activity?.controlCallsign || '')),
@@ -1933,6 +2011,8 @@ async function monitorPage(req, res) {
   const profileStats = collectProfileStats(checkins, baseProfileStats)
   const callsignStats = collectCallsignStats(checkins)
   const usageStats = collectUsageStats(rangedUsage)
+  const clientMetricSummary = collectClientMetricSummary(rangedUsage)
+  const clientMetricRows = buildClientMetricRows(rangedUsage)
   const downloadStats = downloadLog.available ? collectDownloadStats(rangedDownloadEvents) : null
   const pendingRegistrationCount = registrations.filter((item) => item.status === 'pending').length
   const mergedProfiles = mergeProfileLists(baseProfilePayload.profiles, sharedProfilePayload.profiles)
@@ -2009,6 +2089,27 @@ async function monitorPage(req, res) {
       </tr>`
     )
     .join('') || '<tr><td colspan="4">暂无后台登录记录</td></tr>'
+  const clientMetricDetailRows = clientMetricRows
+    .map(
+      (item) => `<tr>
+        <td>${formatBjt(item.at)}</td>
+        <td><span class="tag">${escapeHtml(item.event)}</span></td>
+        <td>${escapeHtml(item.version)}</td>
+        <td>${escapeHtml(item.edition)}</td>
+        <td>${escapeHtml(item.platform)}</td>
+        <td><strong>${escapeHtml(item.callsign)}</strong></td>
+        <td>${item.records}</td>
+        <td>${escapeHtml(item.detail)}</td>
+        <td>${escapeHtml(item.ip)}</td>
+      </tr>`
+    )
+    .join('') || '<tr><td colspan="9">暂无前台匿名统计事件</td></tr>'
+  const clientVersionRows = mapTopCounts(clientMetricSummary.versions)
+    .map((item) => `<tr><td>${escapeHtml(item.name)}</td><td>${item.count}</td></tr>`)
+    .join('') || '<tr><td colspan="2">暂无版本数据</td></tr>'
+  const clientPlatformRows = mapTopCounts(clientMetricSummary.platforms)
+    .map((item) => `<tr><td>${escapeHtml(item.name)}</td><td>${item.count}</td></tr>`)
+    .join('') || '<tr><td colspan="2">暂无平台数据</td></tr>'
   const databaseSummary = {
     syncEnabled: overview.syncEnabled,
     syncPulls: overview.syncPulls,
@@ -2196,8 +2297,28 @@ async function monitorPage(req, res) {
       <a class="card primary" href="#checkin-details"><div>点名记录</div><div class="num">${overview.totalRecords}</div><div class="hint">累计记录条数 · 查看活动记录</div></a>
       <a class="card primary" href="#checkin-details"><div>Excel 生成/下载</div><div class="num">${overview.excelGenerated} / ${overview.excelDownloads}</div><div class="hint">文件生成 / 后台下载 · 查看文件</div></a>
       <a class="card attention" href="#registrations"><div>待批准申请</div><div class="num">${pendingRegistrationCount}</div><div class="hint">需要后台处理 · 查看审核</div></a>
-      <a class="card" href="#admin-login-details"><div>登录独立 IP</div><div class="num">${usageStats.loginUniqueIpCount}</div><div class="hint">后台访问 · 查看登录明细</div></a>
     </div>
+    </section>
+    <section id="client-activity">
+      <h2>前台匿名使用统计</h2>
+      <div class="stat-strip">
+        <span class="stat-pill">活跃设备<strong>${clientMetricSummary.activeInstalls}</strong></span>
+        <span class="stat-pill">启动上报<strong>${clientMetricSummary.appStarts}</strong></span>
+        <span class="stat-pill">心跳上报<strong>${clientMetricSummary.appActives}</strong></span>
+        <span class="stat-pill">有效操作<strong>${clientMetricSummary.productiveEvents}</strong></span>
+        <span class="stat-pill">Excel / ADIF<strong>${clientMetricSummary.excelExports} / ${clientMetricSummary.adifExports}</strong></span>
+        <span class="stat-pill">限制/代理问题<strong>${clientMetricSummary.issueEvents}</strong></span>
+        <span class="stat-pill">最近上报<strong>${clientMetricSummary.latestAt ? formatBjt(clientMetricSummary.latestAt) : '暂无'}</strong></span>
+      </div>
+      <div class="hint" style="margin-bottom:12px">这里按匿名安装 ID 聚合，优先看趋势和有效操作；单个 app-start/app-active 只是活跃信号，不再作为核心业务成果。</div>
+      <div class="table-grid">
+        <div class="table-scroll"><table><thead><tr><th>版本</th><th>事件数</th></tr></thead><tbody>${clientVersionRows}</tbody></table></div>
+        <div class="table-scroll"><table><thead><tr><th>平台</th><th>事件数</th></tr></thead><tbody>${clientPlatformRows}</tbody></table></div>
+      </div>
+      <details>
+        <summary>查看最近前台事件明细 ${clientMetricSummary.total} 条</summary>
+        <div class="table-scroll" style="margin-top:10px"><table><thead><tr><th>时间</th><th>事件</th><th>版本</th><th>形态</th><th>平台</th><th>呼号</th><th>记录数</th><th>细节</th><th>IP</th></tr></thead><tbody>${clientMetricDetailRows}</tbody></table></div>
+      </details>
     </section>
     <section>
       <h2>数据库同步使用链路</h2>
@@ -2210,7 +2331,7 @@ async function monitorPage(req, res) {
     </section>
     <section id="usage-trend"><h2>本地版使用与同步趋势</h2><div class="table-scroll"><table><thead><tr><th>日期</th><th>本地版下载</th><th>主控呼号</th><th>活动日志</th><th>点名记录</th><th>Excel生成</th><th>Excel下载</th><th>数据库接入</th><th>同步拉取</th><th>上传更新</th><th>合并资料</th></tr></thead><tbody>${trendRows}</tbody></table></div></section>
     <section id="checkin-details"><h2>主控活动、点名记录与 Excel 明细</h2><div class="table-scroll"><table><thead><tr><th>时间</th><th>类型</th><th>主控呼号</th><th>活动名</th><th>记录数</th><th>Excel</th><th>Excel下载</th><th>同步</th><th>IP</th><th>客户端</th></tr></thead><tbody>${effectiveRows}</tbody></table></div></section>
-    <section id="admin-login-details"><h2>后台登录明细</h2><div class="table-scroll"><table><thead><tr><th>时间</th><th>账号</th><th>IP</th><th>客户端</th></tr></thead><tbody>${adminLoginRows}</tbody></table></div></section>
+    <section id="admin-login-details"><h2>后台登录明细</h2><div class="hint" style="margin-bottom:10px">管理审计数据，不代表前台用户活跃。</div><div class="table-scroll"><table><thead><tr><th>时间</th><th>账号</th><th>IP</th><th>客户端</th></tr></thead><tbody>${adminLoginRows}</tbody></table></div></section>
     <section id="registrations">
       <h2>数据库治理与同步查询</h2>
       <div class="stat-strip">
