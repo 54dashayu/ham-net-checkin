@@ -17,7 +17,7 @@ on:
 
 jobs:
   build-macos:
-    name: Build universal macOS DMG
+    name: Build macOS DMG
     runs-on: macos-latest
     env:
       HAS_APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
@@ -31,6 +31,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
         run: npm ci
@@ -54,24 +57,34 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$APPLE_CERTIFICATE_PASSWORD" "$keychain_path"
           security find-identity -v -p codesigning "$keychain_path"
 
-      - name: Build notarized universal DMG
+      - name: Build signed macOS DMG
         if: ${{ env.HAS_APPLE_SIGNING == 'true' }}
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-          npm run dist:mac:universal
+          npm run webview:build -- --bundles dmg
+          dmg="$(find src-tauri/target/release/bundle/dmg -name '*.dmg' -type f -print -quit)"
+          if [[ -z "$dmg" ]]; then
+            echo "macOS DMG was not generated." >&2
+            exit 1
+          fi
+          xcrun notarytool submit "$dmg" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$dmg"
 
-      - name: Build unsigned universal DMG
+      - name: Build unsigned macOS DMG
         if: ${{ env.HAS_APPLE_SIGNING != 'true' && github.event_name == 'workflow_dispatch' && inputs.require_notarization == 'false' }}
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+          APPLE_SIGNING_IDENTITY: "-"
         shell: bash
-        run: npm run dist:mac:universal
+        run: npm run webview:build -- --bundles dmg
 
       - name: Fail when notarization is required but unavailable
         if: ${{ env.HAS_APPLE_SIGNING != 'true' && (github.event_name != 'workflow_dispatch' || inputs.require_notarization == 'true') }}
@@ -92,7 +105,7 @@ jobs:
           set -euo pipefail
           version="1.01.2"
           mkdir -p release/macos
-          find release -maxdepth 1 -name '*.dmg' -type f -print -exec cp {} release/macos/ \;
+          find src-tauri/target/release/bundle/dmg -name '*.dmg' -type f -print -exec cp {} release/macos/ \;
           for dmg in release/macos/*.dmg; do
             mv "$dmg" "release/macos/HAM-Checkin-${version}-macOS.dmg"
             break
@@ -111,6 +124,7 @@ jobs:
           app="$(find "$mnt" -maxdepth 2 -name '*.app' -type d -print -quit)"
           xcrun stapler validate "$app"
           spctl -a -vvv -t exec "$app"
+          xcrun stapler validate "$dmg"
           hdiutil detach "$mnt" -quiet
 
       - name: Upload macOS artifacts
