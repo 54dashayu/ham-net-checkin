@@ -86,7 +86,7 @@ const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || get
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
-const appVersion = 'V1.01.1'
+const appVersion = 'V1.01.2'
 
 const i18nMessages = {
   zh: {
@@ -363,21 +363,21 @@ const language = ref(localStorage.getItem(LANGUAGE_KEY) === 'en' ? 'en' : 'zh')
 const t = (key) => i18nMessages[language.value]?.[key] ?? i18nMessages.zh[key] ?? key
 const i18nText = (zh, en) => (language.value === 'en' ? en : zh)
 const userManualUrl = computed(() =>
-  `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v1.01.1-user-manual-en.html' : 'ham-checkin-v1.01.1-user-manual.html'}`
+  `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v1.01.2-user-manual-en.html' : 'ham-checkin-v1.01.2-user-manual.html'}`
 )
-const browserBridgeDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Browser-Bridge.zip'
+const browserBridgeDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.2-Browser-Bridge.zip'
 const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadWin64'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-Win64-Setup.exe'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.2-Win64-Setup.exe'
   },
   {
     label: t('desktopDownloadMacOS'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.1-macOS.dmg'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.2-macOS.dmg'
   },
   {
     label: t('desktopDownloadChecksum'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.01.1.txt'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.01.2.txt'
   }
 ])
 const sourceFieldLabel = (source) =>
@@ -453,6 +453,12 @@ const selectedRecordIds = ref([])
 const recordEditorOpen = ref(false)
 const editingRecordId = ref('')
 const editDraft = reactive(emptyForm())
+const autocompleteState = reactive({
+  target: '',
+  key: '',
+  activeIndex: -1,
+  closeTimer: null
+})
 const autoSaveEnabled = ref(false)
 const excelFileHandle = ref(null)
 const excelSaving = ref(false)
@@ -997,7 +1003,8 @@ const collectKnownCallsigns = () =>
 
 const callsignSuggestions = computed(() => {
   const keyword = toHalfWidth(form.callsign).toUpperCase().replace(/\s+/g, '')
-  const uniqueCallsigns = uniqueRecentValues(collectKnownCallsigns(), collectKnownCallsigns().length || 400)
+  const knownCallsigns = collectKnownCallsigns()
+  const uniqueCallsigns = uniqueRecentValues(knownCallsigns, knownCallsigns.length || 400)
   if (!keyword) return uniqueCallsigns.slice(0, 24)
   return uniqueCallsigns
     .filter((callsign) => callsign.includes(keyword))
@@ -1045,9 +1052,67 @@ const getSearchableKnownValues = (key, target = form) => {
   return globalMatches.slice(0, 24)
 }
 
-const searchableKnownValues = computed(() =>
-  Object.fromEntries(profileFields.map((key) => [key, getSearchableKnownValues(key, form)]))
-)
+const autocompleteTarget = (targetName) => (targetName === 'edit' ? editDraft : form)
+const autocompleteLabelId = (targetName, key) => `${targetName}-${key}-suggestions`
+const isAutocompleteOpen = (targetName, key) =>
+  autocompleteState.target === targetName && autocompleteState.key === key
+
+const autocompleteOptions = (targetName, key) => {
+  if (!isAutocompleteOpen(targetName, key)) return []
+  const target = autocompleteTarget(targetName)
+  const values = key === 'mode'
+    ? uniqueRecentValues([...getSearchableKnownValues(key, target), ...modeOptions], 24)
+    : getSearchableKnownValues(key, target)
+  const current = String(target[key] || '').trim()
+  return values.filter((value) => value && value !== current).slice(0, 12)
+}
+
+const openAutocomplete = (targetName, key) => {
+  window.clearTimeout(autocompleteState.closeTimer)
+  if (autocompleteState.target !== targetName || autocompleteState.key !== key) {
+    autocompleteState.activeIndex = -1
+  }
+  autocompleteState.target = targetName
+  autocompleteState.key = key
+}
+
+const closeAutocomplete = () => {
+  window.clearTimeout(autocompleteState.closeTimer)
+  autocompleteState.target = ''
+  autocompleteState.key = ''
+  autocompleteState.activeIndex = -1
+  autocompleteState.closeTimer = null
+}
+
+const closeAutocompleteSoon = () => {
+  window.clearTimeout(autocompleteState.closeTimer)
+  autocompleteState.closeTimer = window.setTimeout(closeAutocomplete, 120)
+}
+
+const chooseAutocompleteValue = (targetName, key, value) => {
+  const target = autocompleteTarget(targetName)
+  target[key] = value
+  closeAutocomplete()
+}
+
+const handleAutocompleteKeydown = (event, targetName, key) => {
+  const options = autocompleteOptions(targetName, key)
+  if (!options.length && event.key !== 'Escape') return
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    openAutocomplete(targetName, key)
+    autocompleteState.activeIndex = (autocompleteState.activeIndex + 1) % options.length
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    openAutocomplete(targetName, key)
+    autocompleteState.activeIndex = (autocompleteState.activeIndex - 1 + options.length) % options.length
+  } else if (event.key === 'Enter' && autocompleteState.activeIndex >= 0) {
+    event.preventDefault()
+    chooseAutocompleteValue(targetName, key, options[autocompleteState.activeIndex])
+  } else if (event.key === 'Escape') {
+    closeAutocomplete()
+  }
+}
 
 const recordStatusText = computed(() => {
   if (duplicateCallsign.value && profileParticipationCount.value) {
@@ -1482,6 +1547,16 @@ const persistFmoConfig = () => {
 
 const persistActivityConfig = () => {
   localStorage.setItem(scopedKey(ACTIVITY_CONFIG_KEY), JSON.stringify(activityConfig))
+}
+
+const deferredPersistTimers = new Map()
+const scheduleDeferredPersist = (key, callback, delay = 140) => {
+  window.clearTimeout(deferredPersistTimers.get(key))
+  const timer = window.setTimeout(() => {
+    deferredPersistTimers.delete(key)
+    callback()
+  }, delay)
+  deferredPersistTimers.set(key, timer)
 }
 
 const loadRecords = () => {
@@ -3788,18 +3863,18 @@ const importDb3 = async (event) => {
 watch(
   records,
   () => {
-    persist()
+    scheduleDeferredPersist('records', persist)
     scheduleAutoSave()
   },
   { deep: true }
 )
-watch(profiles, persistProfiles, { deep: true })
-watch(profileSyncConfig, persistProfileSyncConfig, { deep: true })
-watch(fmoConfig, persistFmoConfig, { deep: true })
+watch(profiles, () => scheduleDeferredPersist('profiles', persistProfiles), { deep: true })
+watch(profileSyncConfig, () => scheduleDeferredPersist('profile-sync-config', persistProfileSyncConfig), { deep: true })
+watch(fmoConfig, () => scheduleDeferredPersist('fmo-config', persistFmoConfig), { deep: true })
 watch(
   activityConfig,
   () => {
-    persistActivityConfig()
+    scheduleDeferredPersist('activity-config', persistActivityConfig)
     scheduleAutoSave()
   },
   { deep: true }
@@ -3929,6 +4004,9 @@ onUnmounted(() => {
   window.clearTimeout(controlTxClearTimer.value)
   window.clearTimeout(autoSaveTimer.value)
   window.clearTimeout(profileSyncDebounceTimer.value)
+  window.clearTimeout(autocompleteState.closeTimer)
+  deferredPersistTimers.forEach((timer) => window.clearTimeout(timer))
+  deferredPersistTimers.clear()
   window.clearInterval(systemClockTimer.value)
   window.clearInterval(clientTelemetryTimer.value)
   closeFmoClient()
@@ -4191,7 +4269,16 @@ onUnmounted(() => {
             <label class="field">
               <span>QTH</span>
               <div class="clearable-input">
-                <input v-model="form.qth" list="qth-options" :placeholder="t('qthPlaceholder')" />
+                <input
+                  v-model="form.qth"
+                  :placeholder="t('qthPlaceholder')"
+                  autocomplete="off"
+                  :aria-controls="autocompleteLabelId('form', 'qth')"
+                  @focus="openAutocomplete('form', 'qth')"
+                  @input="openAutocomplete('form', 'qth')"
+                  @keydown="handleAutocompleteKeydown($event, 'form', 'qth')"
+                  @blur="closeAutocompleteSoon"
+                />
                 <button
                   type="button"
                   class="input-clear-button"
@@ -4201,12 +4288,35 @@ onUnmounted(() => {
                 >
                   X
                 </button>
+                <ul
+                  v-if="autocompleteOptions('form', 'qth').length"
+                  :id="autocompleteLabelId('form', 'qth')"
+                  class="autocomplete-menu"
+                >
+                  <li
+                    v-for="(value, index) in autocompleteOptions('form', 'qth')"
+                    :key="value"
+                    :class="{ active: autocompleteState.activeIndex === index }"
+                    @mousedown.prevent="chooseAutocompleteValue('form', 'qth', value)"
+                  >
+                    {{ value }}
+                  </li>
+                </ul>
               </div>
             </label>
             <label class="field">
               <span>{{ t('deviceName') }}</span>
               <div class="clearable-input">
-                <input v-model="form.device" list="device-options" :placeholder="t('devicePlaceholder')" />
+                <input
+                  v-model="form.device"
+                  :placeholder="t('devicePlaceholder')"
+                  autocomplete="off"
+                  :aria-controls="autocompleteLabelId('form', 'device')"
+                  @focus="openAutocomplete('form', 'device')"
+                  @input="openAutocomplete('form', 'device')"
+                  @keydown="handleAutocompleteKeydown($event, 'form', 'device')"
+                  @blur="closeAutocompleteSoon"
+                />
                 <button
                   type="button"
                   class="input-clear-button"
@@ -4216,20 +4326,37 @@ onUnmounted(() => {
                 >
                   X
                 </button>
+                <ul
+                  v-if="autocompleteOptions('form', 'device').length"
+                  :id="autocompleteLabelId('form', 'device')"
+                  class="autocomplete-menu"
+                >
+                  <li
+                    v-for="(value, index) in autocompleteOptions('form', 'device')"
+                    :key="value"
+                    :class="{ active: autocompleteState.activeIndex === index }"
+                    @mousedown.prevent="chooseAutocompleteValue('form', 'device', value)"
+                  >
+                    {{ value }}
+                  </li>
+                </ul>
               </div>
             </label>
           </div>
-          <datalist id="qth-options">
-            <option v-for="value in searchableKnownValues.qth" :key="value" :value="value" />
-          </datalist>
-          <datalist id="device-options">
-            <option v-for="value in searchableKnownValues.device" :key="value" :value="value" />
-          </datalist>
           <div class="field-row compact">
             <label class="field">
               <span>{{ t('mode') }}</span>
               <div class="clearable-input">
-                <input v-model="form.mode" list="mode-options" placeholder="FM / DMR" />
+                <input
+                  v-model="form.mode"
+                  placeholder="FM / DMR"
+                  autocomplete="off"
+                  :aria-controls="autocompleteLabelId('form', 'mode')"
+                  @focus="openAutocomplete('form', 'mode')"
+                  @input="openAutocomplete('form', 'mode')"
+                  @keydown="handleAutocompleteKeydown($event, 'form', 'mode')"
+                  @blur="closeAutocompleteSoon"
+                />
                 <button
                   type="button"
                   class="input-clear-button"
@@ -4239,12 +4366,35 @@ onUnmounted(() => {
                 >
                   X
                 </button>
+                <ul
+                  v-if="autocompleteOptions('form', 'mode').length"
+                  :id="autocompleteLabelId('form', 'mode')"
+                  class="autocomplete-menu"
+                >
+                  <li
+                    v-for="(value, index) in autocompleteOptions('form', 'mode')"
+                    :key="value"
+                    :class="{ active: autocompleteState.activeIndex === index }"
+                    @mousedown.prevent="chooseAutocompleteValue('form', 'mode', value)"
+                  >
+                    {{ value }}
+                  </li>
+                </ul>
               </div>
             </label>
             <label class="field">
               <span>{{ t('power') }}</span>
               <div class="clearable-input">
-                <input v-model="form.power" list="power-options" placeholder="L / 25W" />
+                <input
+                  v-model="form.power"
+                  placeholder="L / 25W"
+                  autocomplete="off"
+                  :aria-controls="autocompleteLabelId('form', 'power')"
+                  @focus="openAutocomplete('form', 'power')"
+                  @input="openAutocomplete('form', 'power')"
+                  @keydown="handleAutocompleteKeydown($event, 'form', 'power')"
+                  @blur="closeAutocompleteSoon"
+                />
                 <button
                   type="button"
                   class="input-clear-button"
@@ -4254,12 +4404,35 @@ onUnmounted(() => {
                 >
                   X
                 </button>
+                <ul
+                  v-if="autocompleteOptions('form', 'power').length"
+                  :id="autocompleteLabelId('form', 'power')"
+                  class="autocomplete-menu"
+                >
+                  <li
+                    v-for="(value, index) in autocompleteOptions('form', 'power')"
+                    :key="value"
+                    :class="{ active: autocompleteState.activeIndex === index }"
+                    @mousedown.prevent="chooseAutocompleteValue('form', 'power', value)"
+                  >
+                    {{ value }}
+                  </li>
+                </ul>
               </div>
             </label>
             <label class="field">
               <span>{{ t('signal') }}</span>
               <div class="clearable-input">
-                <input v-model="form.signal" list="signal-options" placeholder="59" />
+                <input
+                  v-model="form.signal"
+                  placeholder="59"
+                  autocomplete="off"
+                  :aria-controls="autocompleteLabelId('form', 'signal')"
+                  @focus="openAutocomplete('form', 'signal')"
+                  @input="openAutocomplete('form', 'signal')"
+                  @keydown="handleAutocompleteKeydown($event, 'form', 'signal')"
+                  @blur="closeAutocompleteSoon"
+                />
                 <button
                   type="button"
                   class="input-clear-button"
@@ -4269,23 +4442,37 @@ onUnmounted(() => {
                 >
                   X
                 </button>
+                <ul
+                  v-if="autocompleteOptions('form', 'signal').length"
+                  :id="autocompleteLabelId('form', 'signal')"
+                  class="autocomplete-menu"
+                >
+                  <li
+                    v-for="(value, index) in autocompleteOptions('form', 'signal')"
+                    :key="value"
+                    :class="{ active: autocompleteState.activeIndex === index }"
+                    @mousedown.prevent="chooseAutocompleteValue('form', 'signal', value)"
+                  >
+                    {{ value }}
+                  </li>
+                </ul>
               </div>
             </label>
           </div>
-          <datalist id="mode-options">
-            <option v-for="value in [...new Set([...searchableKnownValues.mode, ...modeOptions])]" :key="value" :value="value" />
-          </datalist>
-          <datalist id="power-options">
-            <option v-for="value in searchableKnownValues.power" :key="value" :value="value" />
-          </datalist>
-          <datalist id="signal-options">
-            <option v-for="value in searchableKnownValues.signal" :key="value" :value="value" />
-          </datalist>
           <div class="remark-action-row">
             <label class="field">
               <span>{{ t('antenna') }}</span>
               <div class="clearable-input">
-                <input v-model="form.antenna" list="antenna-options" :placeholder="t('antennaPlaceholder')" />
+                <input
+                  v-model="form.antenna"
+                  :placeholder="t('antennaPlaceholder')"
+                  autocomplete="off"
+                  :aria-controls="autocompleteLabelId('form', 'antenna')"
+                  @focus="openAutocomplete('form', 'antenna')"
+                  @input="openAutocomplete('form', 'antenna')"
+                  @keydown="handleAutocompleteKeydown($event, 'form', 'antenna')"
+                  @blur="closeAutocompleteSoon"
+                />
                 <button
                   type="button"
                   class="input-clear-button"
@@ -4295,11 +4482,22 @@ onUnmounted(() => {
                 >
                   X
                 </button>
+                <ul
+                  v-if="autocompleteOptions('form', 'antenna').length"
+                  :id="autocompleteLabelId('form', 'antenna')"
+                  class="autocomplete-menu"
+                >
+                  <li
+                    v-for="(value, index) in autocompleteOptions('form', 'antenna')"
+                    :key="value"
+                    :class="{ active: autocompleteState.activeIndex === index }"
+                    @mousedown.prevent="chooseAutocompleteValue('form', 'antenna', value)"
+                  >
+                    {{ value }}
+                  </li>
+                </ul>
               </div>
             </label>
-            <datalist id="antenna-options">
-              <option v-for="value in searchableKnownValues.antenna" :key="value" :value="value" />
-            </datalist>
             <label class="field">
               <span>{{ t('remarks') }}</span>
               <div class="clearable-input">
@@ -4854,7 +5052,15 @@ onUnmounted(() => {
           <label class="field">
             <span>QTH</span>
             <div class="clearable-input">
-              <input v-model="editDraft.qth" list="qth-options" />
+              <input
+                v-model="editDraft.qth"
+                autocomplete="off"
+                :aria-controls="autocompleteLabelId('edit', 'qth')"
+                @focus="openAutocomplete('edit', 'qth')"
+                @input="openAutocomplete('edit', 'qth')"
+                @keydown="handleAutocompleteKeydown($event, 'edit', 'qth')"
+                @blur="closeAutocompleteSoon"
+              />
               <button
                 type="button"
                 class="input-clear-button"
@@ -4864,12 +5070,34 @@ onUnmounted(() => {
               >
                 X
               </button>
+              <ul
+                v-if="autocompleteOptions('edit', 'qth').length"
+                :id="autocompleteLabelId('edit', 'qth')"
+                class="autocomplete-menu"
+              >
+                <li
+                  v-for="(value, index) in autocompleteOptions('edit', 'qth')"
+                  :key="value"
+                  :class="{ active: autocompleteState.activeIndex === index }"
+                  @mousedown.prevent="chooseAutocompleteValue('edit', 'qth', value)"
+                >
+                  {{ value }}
+                </li>
+              </ul>
             </div>
           </label>
           <label class="field">
             <span>{{ t('deviceName') }}</span>
             <div class="clearable-input">
-              <input v-model="editDraft.device" list="device-options" />
+              <input
+                v-model="editDraft.device"
+                autocomplete="off"
+                :aria-controls="autocompleteLabelId('edit', 'device')"
+                @focus="openAutocomplete('edit', 'device')"
+                @input="openAutocomplete('edit', 'device')"
+                @keydown="handleAutocompleteKeydown($event, 'edit', 'device')"
+                @blur="closeAutocompleteSoon"
+              />
               <button
                 type="button"
                 class="input-clear-button"
@@ -4879,12 +5107,34 @@ onUnmounted(() => {
               >
                 X
               </button>
+              <ul
+                v-if="autocompleteOptions('edit', 'device').length"
+                :id="autocompleteLabelId('edit', 'device')"
+                class="autocomplete-menu"
+              >
+                <li
+                  v-for="(value, index) in autocompleteOptions('edit', 'device')"
+                  :key="value"
+                  :class="{ active: autocompleteState.activeIndex === index }"
+                  @mousedown.prevent="chooseAutocompleteValue('edit', 'device', value)"
+                >
+                  {{ value }}
+                </li>
+              </ul>
             </div>
           </label>
           <label class="field">
             <span>{{ t('antenna') }}</span>
             <div class="clearable-input">
-              <input v-model="editDraft.antenna" list="antenna-options" />
+              <input
+                v-model="editDraft.antenna"
+                autocomplete="off"
+                :aria-controls="autocompleteLabelId('edit', 'antenna')"
+                @focus="openAutocomplete('edit', 'antenna')"
+                @input="openAutocomplete('edit', 'antenna')"
+                @keydown="handleAutocompleteKeydown($event, 'edit', 'antenna')"
+                @blur="closeAutocompleteSoon"
+              />
               <button
                 type="button"
                 class="input-clear-button"
@@ -4894,6 +5144,20 @@ onUnmounted(() => {
               >
                 X
               </button>
+              <ul
+                v-if="autocompleteOptions('edit', 'antenna').length"
+                :id="autocompleteLabelId('edit', 'antenna')"
+                class="autocomplete-menu"
+              >
+                <li
+                  v-for="(value, index) in autocompleteOptions('edit', 'antenna')"
+                  :key="value"
+                  :class="{ active: autocompleteState.activeIndex === index }"
+                  @mousedown.prevent="chooseAutocompleteValue('edit', 'antenna', value)"
+                >
+                  {{ value }}
+                </li>
+              </ul>
             </div>
           </label>
         </div>
@@ -4902,7 +5166,15 @@ onUnmounted(() => {
           <label class="field">
             <span>{{ t('mode') }}</span>
             <div class="clearable-input">
-              <input v-model="editDraft.mode" list="mode-options" />
+              <input
+                v-model="editDraft.mode"
+                autocomplete="off"
+                :aria-controls="autocompleteLabelId('edit', 'mode')"
+                @focus="openAutocomplete('edit', 'mode')"
+                @input="openAutocomplete('edit', 'mode')"
+                @keydown="handleAutocompleteKeydown($event, 'edit', 'mode')"
+                @blur="closeAutocompleteSoon"
+              />
               <button
                 type="button"
                 class="input-clear-button"
@@ -4912,12 +5184,34 @@ onUnmounted(() => {
               >
                 X
               </button>
+              <ul
+                v-if="autocompleteOptions('edit', 'mode').length"
+                :id="autocompleteLabelId('edit', 'mode')"
+                class="autocomplete-menu"
+              >
+                <li
+                  v-for="(value, index) in autocompleteOptions('edit', 'mode')"
+                  :key="value"
+                  :class="{ active: autocompleteState.activeIndex === index }"
+                  @mousedown.prevent="chooseAutocompleteValue('edit', 'mode', value)"
+                >
+                  {{ value }}
+                </li>
+              </ul>
             </div>
           </label>
           <label class="field">
             <span>{{ t('power') }}</span>
             <div class="clearable-input">
-              <input v-model="editDraft.power" list="power-options" />
+              <input
+                v-model="editDraft.power"
+                autocomplete="off"
+                :aria-controls="autocompleteLabelId('edit', 'power')"
+                @focus="openAutocomplete('edit', 'power')"
+                @input="openAutocomplete('edit', 'power')"
+                @keydown="handleAutocompleteKeydown($event, 'edit', 'power')"
+                @blur="closeAutocompleteSoon"
+              />
               <button
                 type="button"
                 class="input-clear-button"
@@ -4927,12 +5221,34 @@ onUnmounted(() => {
               >
                 X
               </button>
+              <ul
+                v-if="autocompleteOptions('edit', 'power').length"
+                :id="autocompleteLabelId('edit', 'power')"
+                class="autocomplete-menu"
+              >
+                <li
+                  v-for="(value, index) in autocompleteOptions('edit', 'power')"
+                  :key="value"
+                  :class="{ active: autocompleteState.activeIndex === index }"
+                  @mousedown.prevent="chooseAutocompleteValue('edit', 'power', value)"
+                >
+                  {{ value }}
+                </li>
+              </ul>
             </div>
           </label>
           <label class="field">
             <span>{{ t('signal') }}</span>
             <div class="clearable-input">
-              <input v-model="editDraft.signal" list="signal-options" />
+              <input
+                v-model="editDraft.signal"
+                autocomplete="off"
+                :aria-controls="autocompleteLabelId('edit', 'signal')"
+                @focus="openAutocomplete('edit', 'signal')"
+                @input="openAutocomplete('edit', 'signal')"
+                @keydown="handleAutocompleteKeydown($event, 'edit', 'signal')"
+                @blur="closeAutocompleteSoon"
+              />
               <button
                 type="button"
                 class="input-clear-button"
@@ -4942,6 +5258,20 @@ onUnmounted(() => {
               >
                 X
               </button>
+              <ul
+                v-if="autocompleteOptions('edit', 'signal').length"
+                :id="autocompleteLabelId('edit', 'signal')"
+                class="autocomplete-menu"
+              >
+                <li
+                  v-for="(value, index) in autocompleteOptions('edit', 'signal')"
+                  :key="value"
+                  :class="{ active: autocompleteState.activeIndex === index }"
+                  @mousedown.prevent="chooseAutocompleteValue('edit', 'signal', value)"
+                >
+                  {{ value }}
+                </li>
+              </ul>
             </div>
           </label>
         </div>

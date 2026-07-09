@@ -20,7 +20,7 @@ function isAllowedLocalTarget(rawUrl) {
 }
 
 function jsonResponse(ok, extra = {}) {
-  return { ok, bridge: 'ham-local-device-bridge', version: '1.01.1', ...extra }
+  return { ok, bridge: 'ham-local-device-bridge', version: '1.01.2', ...extra }
 }
 
 function markBridgeActive() {

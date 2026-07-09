@@ -90,11 +90,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(node -p "require('./package.json').version")"
+          version="1.01.2"
           mkdir -p release/macos
           find release -maxdepth 1 -name '*.dmg' -type f -print -exec cp {} release/macos/ \;
           for dmg in release/macos/*.dmg; do
-            mv "$dmg" "release/macos/HAM-Checkin-${version}-macOS-Universal.dmg"
+            mv "$dmg" "release/macos/HAM-Checkin-${version}-macOS.dmg"
             break
           done
           shasum -a 256 release/macos/* > "release/macos/SHA256SUMS-macOS-${version}.txt"

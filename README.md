@@ -4,9 +4,9 @@
 
 ## 当前测试版
 
-V1.01.1 完成本地版与公网 VPS 版同步交付：公网 VPS 版提供 BM DMR 基础体验，导入审核密钥后可通过 Chrome / Edge 浏览器插件访问本地 MMDVM / HAMBOX / FMO；本地版继续内置本地设备访问能力。该版本优化了备选区 4 卡片流程、最近 6 个候选高亮、MMDVM TS1/TS2 筛选、主控发射提示、重复记录拦截、Excel / ADIF 导出和中英文说明书。
+V1.01.2 完成本地版与公网 VPS 版同步交付：公网 VPS 版提供 BM DMR 基础体验，导入审核密钥后可通过 Chrome / Edge 浏览器插件访问本地 MMDVM / HAMBOX / FMO；本地版继续内置本地设备访问能力。该版本在 V1.01.1 基础上修复常用候选下拉不易点选、填写框和添加记录操作迟钝的问题，并保留备选区 4 卡片流程、最近 6 个候选高亮、MMDVM TS1/TS2 筛选、主控发射提示、重复记录拦截、Excel / ADIF 导出和中英文说明书。
 
-V1.01.1 发布文件位于 `release/v1.01.1/`，仅保留 Win64 安装版、macOS DMG、Chrome / Edge 浏览器插件和校验文件。Win64 安装包建议通过 GitHub Actions / Windows 环境构建。
+V1.01.2 发布文件位于 `release/v1.01.2/`，仅保留 Win64 安装版、macOS DMG、Chrome / Edge 浏览器插件和校验文件。Win64 安装包建议通过 GitHub Actions / Windows 环境构建。
 
 ## 当前功能
 

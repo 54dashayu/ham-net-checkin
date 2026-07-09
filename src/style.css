@@ -502,9 +502,49 @@ h2 {
   position: relative;
 }
 
+.field:has(.autocomplete-menu) {
+  position: relative;
+  z-index: 20;
+}
+
 .clearable-input input {
   padding-right: 44px;
   width: 100%;
+}
+
+.autocomplete-menu {
+  background: #fff;
+  border: 1px solid var(--line-dark);
+  border-radius: 6px;
+  box-shadow: 0 10px 24px rgba(33, 50, 42, 0.18);
+  left: 0;
+  list-style: none;
+  margin: 4px 0 0;
+  max-height: 168px;
+  overflow-y: auto;
+  padding: 4px;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 80;
+}
+
+.autocomplete-menu li {
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow: hidden;
+  padding: 7px 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autocomplete-menu li:hover,
+.autocomplete-menu li.active {
+  background: #eaf6ef;
+  color: var(--green);
 }
 
 .input-clear-button,
