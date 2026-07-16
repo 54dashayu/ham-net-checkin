@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
 const distDir = path.join(rootDir, 'dist')
 const dataDir = process.env.HAM_CHECKIN_DATA_DIR || path.join(rootDir, 'data')
+const ipGeoCacheFile = path.join(dataDir, 'ip-geo-cache.json')
 const defaultPort = Number(process.env.PORT || 37173)
 const adminUser = process.env.HAM_CHECKIN_ADMIN_USER || 'bh1jss'
 const adminPassword = process.env.HAM_CHECKIN_ADMIN_PASSWORD || ''
@@ -138,6 +139,13 @@ const clientEventCorsHeaders = {
   'access-control-allow-methods': 'POST,OPTIONS',
   'access-control-allow-headers': 'content-type'
 }
+const checkinCorsHeaders = {
+  ...jsonHeaders,
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'POST,OPTIONS',
+  'access-control-allow-headers':
+    'content-type,x-ham-callsign,x-ham-crac-certificate,x-ham-registration-qth,x-ham-registration-repeater,x-ham-profile-code,x-ham-profile-key'
+}
 
 const sendProfileJson = (res, status, payload) => {
   send(res, status, JSON.stringify(payload), profileCorsHeaders)
@@ -145,6 +153,10 @@ const sendProfileJson = (res, status, payload) => {
 
 const sendClientEventJson = (res, status, payload) => {
   send(res, status, JSON.stringify(payload), clientEventCorsHeaders)
+}
+
+const sendCheckinJson = (res, status, payload) => {
+  send(res, status, JSON.stringify(payload), checkinCorsHeaders)
 }
 
 async function ensureDirs() {
@@ -979,15 +991,18 @@ async function recordClientEvent(req, res) {
     language: sanitizeClientMetricText(client.language, 8),
     installId: sanitizeClientMetricText(client.installId, 80),
     activityId: sanitizeClientMetricText(payload.activityId, 96),
+    activityName: sanitizeClientMetricText(payload.activityName, 160),
     controlCallsign: normalizeMonitorCallsign(payload.controlCallsign),
     profileCallsign: normalizeMonitorCallsign(payload.profileCallsign),
     recordCount: Number.isFinite(Number(payload.recordCount)) ? Number(payload.recordCount) : 0,
+    durationSeconds: Number.isFinite(Number(payload.durationSeconds)) ? Math.max(0, Math.round(Number(payload.durationSeconds))) : 0,
     source: sanitizeClientMetricText(payload.source, 32),
     previousSource: sanitizeClientMetricText(payload.previousSource, 32),
     action: sanitizeClientMetricText(payload.action, 48),
     reason: sanitizeClientMetricText(payload.reason, 48),
     status: sanitizeClientMetricText(payload.status, 48),
     format: sanitizeClientMetricText(payload.format, 16),
+    filename: sanitizeClientMetricText(payload.filename, 180),
     enabled: typeof payload.enabled === 'boolean' ? payload.enabled : null,
     registered: typeof payload.registered === 'boolean' ? payload.registered : null,
     proxyEnabled: typeof payload.proxyEnabled === 'boolean' ? payload.proxyEnabled : null,
@@ -1008,7 +1023,7 @@ async function saveCheckin(req, res) {
 
   if (isNetworkEdition && !approvedRegistration) {
     if (records.length > networkLimits.maxRecords) {
-      sendJson(res, 403, { ok: false, error: '未注册网络版最多保存 80 条记录，请导入验证密钥继续使用。' })
+      sendCheckinJson(res, 403, { ok: false, error: '未注册网络版最多保存 80 条记录，请导入验证密钥继续使用。' })
       return
     }
     const usage = await readUsage(0)
@@ -1023,12 +1038,12 @@ async function saveCheckin(req, res) {
       .filter((time) => Number.isFinite(time))
       .sort((a, b) => a - b)[0]
     if (firstSaveAt && now - firstSaveAt > networkLimits.durationMs) {
-      sendJson(res, 403, { ok: false, error: '未注册网络版使用时长已超过 75 分钟，请导入验证密钥继续使用。' })
+      sendCheckinJson(res, 403, { ok: false, error: '未注册网络版使用时长已超过 75 分钟，请导入验证密钥继续使用。' })
       return
     }
     const savedActivityIds = new Set(saves.map((item) => item.activityId).filter(Boolean))
     if (!savedActivityIds.has(activityId) && savedActivityIds.size >= networkLimits.maxActivities) {
-      sendJson(res, 403, { ok: false, error: '未注册网络版仅允许 1 个活动，请导入验证密钥继续使用。' })
+      sendCheckinJson(res, 403, { ok: false, error: '未注册网络版仅允许 1 个活动，请导入验证密钥继续使用。' })
       return
     }
   }
@@ -1067,7 +1082,7 @@ async function saveCheckin(req, res) {
     profileCallsign: approvedRegistration?.callsign || '',
     profileStats: payload.profileStats || null
   })
-  sendJson(res, 200, {
+  sendCheckinJson(res, 200, {
     ok: true,
     id,
     recordCount: records.length,
@@ -1252,6 +1267,32 @@ async function handleProfileRegistrationAction(req, res, id, action) {
     status: registrations[index].status,
     reviewMode: settings.reviewMode,
     riskFlags
+  })
+  send(res, 303, '', { location: `${basePath}${returnTo}` })
+}
+
+async function handleProfileRegistrationDelete(req, res, id) {
+  if (!requireAdmin(req, res)) return
+  const body = await readBody(req, 64 * 1024)
+  const form = new URLSearchParams(body)
+  const returnTo = safeAdminReturnTo(form.get('returnTo'), '/admin/#registrations')
+  const registrations = await readProfileRegistrations()
+  const current = registrations.find((item) => item.id === id)
+  if (!current) {
+    send(res, 404, 'registration not found', { 'content-type': 'text/plain; charset=utf-8' })
+    return
+  }
+  if (current.status === 'approved') {
+    send(res, 409, '已通过记录关联验证密钥，不允许直接删除。请先拒绝或另行设计撤销流程。', {
+      'content-type': 'text/plain; charset=utf-8'
+    })
+    return
+  }
+  await writeProfileRegistrations(registrations.filter((item) => item.id !== id))
+  await logUsage(req, 'profile-registration-delete', {
+    id,
+    callsign: current.callsign,
+    status: current.status
   })
   send(res, 303, '', { location: `${basePath}${returnTo}` })
 }
@@ -1743,8 +1784,12 @@ function collectPageViews(usage) {
   return usage.filter((item) => item.event === 'page-view')
 }
 
-function collectClientMetricSummary(usage) {
-  const metrics = usage.filter((item) => item.clientMetric)
+function isDesktopClientMetric(item) {
+  return item.clientMetric && item.edition !== 'public-web'
+}
+
+function collectClientMetricSummary(usage, predicate = (item) => item.clientMetric) {
+  const metrics = usage.filter(predicate)
   const installs = new Set()
   const versions = new Map()
   const platforms = new Map()
@@ -1790,6 +1835,178 @@ function collectClientMetricSummary(usage) {
   }
 }
 
+function getClientInstallKey(item) {
+  return item.installId || `${item.ip || '-'}|${item.userAgent || '-'}`
+}
+
+function formatDuration(seconds) {
+  const value = Math.max(0, Math.round(Number(seconds) || 0))
+  if (value < 60) return `${value}秒`
+  const minutes = Math.floor(value / 60)
+  if (minutes < 60) return `${minutes}分钟`
+  const hours = Math.floor(minutes / 60)
+  const restMinutes = minutes % 60
+  return restMinutes ? `${hours}小时${restMinutes}分钟` : `${hours}小时`
+}
+
+function isLocalIp(ip) {
+  return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(String(ip || ''))
+}
+
+function isPrivateIp(ip) {
+  const value = String(ip || '')
+  if (isLocalIp(value)) return true
+  if (/^10\./.test(value) || /^192\.168\./.test(value)) return true
+  const match = value.match(/^172\.(\d+)\./)
+  return Boolean(match && Number(match[1]) >= 16 && Number(match[1]) <= 31)
+}
+
+function describeIpLocation(ip) {
+  const value = String(ip || '').trim()
+  if (!value || value === '-') return '未知'
+  if (isLocalIp(value)) return '本机访问'
+  if (isPrivateIp(value)) return '内网/本地版'
+  return '公网 IP（待解析）'
+}
+
+async function readIpGeoCache() {
+  try {
+    return JSON.parse(await fs.readFile(ipGeoCacheFile, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+async function writeIpGeoCache(cache) {
+  try {
+    await fs.writeFile(ipGeoCacheFile, JSON.stringify(cache, null, 2) + '\n', 'utf8')
+  } catch {
+    /* cache write best effort */
+  }
+}
+
+async function resolveIpLocations(ips) {
+  const uniqueIps = [...new Set(ips.map((ip) => String(ip || '').trim()).filter(Boolean))]
+  const locations = new Map(uniqueIps.map((ip) => [ip, describeIpLocation(ip)]))
+  const publicIps = uniqueIps.filter((ip) => !isLocalIp(ip) && !isPrivateIp(ip))
+  if (!publicIps.length) return locations
+
+  const cache = await readIpGeoCache()
+  const now = Date.now()
+  const maxAgeMs = 14 * 24 * 60 * 60 * 1000
+  const missing = []
+  publicIps.forEach((ip) => {
+    const cached = cache[ip]
+    const cachedAt = new Date(cached?.updatedAt || '').getTime()
+    if (cached?.label && Number.isFinite(cachedAt) && now - cachedAt < maxAgeMs) {
+      locations.set(ip, cached.label)
+    } else {
+      missing.push(ip)
+    }
+  })
+  if (!missing.length || typeof fetch !== 'function') return locations
+
+  try {
+    const response = await fetch('http://ip-api.com/batch?fields=status,country,regionName,city,isp,query', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(missing.slice(0, 40)),
+      signal: AbortSignal.timeout(2800)
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const results = await response.json()
+    if (!Array.isArray(results)) throw new Error('invalid geo response')
+    results.forEach((item) => {
+      const ip = String(item?.query || '')
+      if (!ip || item?.status !== 'success') return
+      const label = [item.country, item.regionName, item.city, item.isp]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+        .join(' / ')
+      if (!label) return
+      locations.set(ip, label)
+      cache[ip] = { label, updatedAt: new Date().toISOString() }
+    })
+    await writeIpGeoCache(cache)
+  } catch {
+    publicIps.forEach((ip) => {
+      if (locations.get(ip) === '公网 IP（待解析）') locations.set(ip, '公网 IP（解析失败）')
+    })
+  }
+  return locations
+}
+
+function collectClientSessionRows(usage, predicate = (item) => item.clientMetric) {
+  const groups = new Map()
+  usage
+    .filter(predicate)
+    .forEach((item) => {
+      const key = getClientInstallKey(item)
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          firstAt: item.at || '',
+          latestAt: item.at || '',
+          events: 0,
+          productiveEvents: 0,
+          maxDurationSeconds: 0,
+          callsigns: new Set(),
+          platforms: new Set(),
+          versions: new Set(),
+          ips: new Set()
+        })
+      }
+      const row = groups.get(key)
+      row.events += 1
+      if (['excel-export-local', 'adif-export-local', 'new-activity', 'sync-toggle'].includes(item.event)) row.productiveEvents += 1
+      if (item.at && (!row.firstAt || String(item.at).localeCompare(row.firstAt) < 0)) row.firstAt = item.at
+      if (item.at && (!row.latestAt || String(item.at).localeCompare(row.latestAt) > 0)) row.latestAt = item.at
+      row.maxDurationSeconds = Math.max(row.maxDurationSeconds, Number(item.durationSeconds || 0))
+      if (item.controlCallsign || item.profileCallsign) row.callsigns.add(item.controlCallsign || item.profileCallsign)
+      if (item.platform) row.platforms.add(item.platform)
+      if (item.appVersion) row.versions.add(item.appVersion)
+      if (item.ip) row.ips.add(item.ip)
+    })
+  return [...groups.values()]
+    .map((row) => {
+      const spanSeconds = row.firstAt && row.latestAt
+        ? Math.max(0, Math.round((new Date(row.latestAt).getTime() - new Date(row.firstAt).getTime()) / 1000))
+        : 0
+      return {
+        ...row,
+        durationSeconds: Math.max(row.maxDurationSeconds, spanSeconds)
+      }
+    })
+    .sort((a, b) => String(b.latestAt).localeCompare(String(a.latestAt)))
+    .slice(0, 20)
+}
+
+function collectClientIpRows(usage, ipLocations = new Map(), predicate = (item) => item.clientMetric) {
+  const groups = new Map()
+  usage
+    .filter((item) => predicate(item) && item.ip)
+    .forEach((item) => {
+      if (!groups.has(item.ip)) {
+        groups.set(item.ip, {
+          ip: item.ip,
+          location: ipLocations.get(item.ip) || describeIpLocation(item.ip),
+          events: 0,
+          installs: new Set(),
+          latestAt: '',
+          platforms: new Set()
+        })
+      }
+      const row = groups.get(item.ip)
+      row.events += 1
+      row.installs.add(getClientInstallKey(item))
+      if (item.at && String(item.at).localeCompare(row.latestAt) > 0) row.latestAt = item.at
+      if (item.platform) row.platforms.add(item.platform)
+    })
+  return [...groups.values()]
+    .sort((a, b) => b.events - a.events || String(b.latestAt).localeCompare(String(a.latestAt)))
+    .slice(0, 20)
+}
+
 function mapTopCounts(counts, limit = 8) {
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -1797,20 +2014,41 @@ function mapTopCounts(counts, limit = 8) {
     .map(([name, count]) => ({ name, count }))
 }
 
-function buildClientMetricRows(usage) {
+function formatClientMetricEvent(event) {
+  const labels = {
+    'app-start': '启动',
+    'app-active': '心跳',
+    'app-version-check': '版本检查',
+    'excel-export-local': 'Excel 导出',
+    'adif-export-local': 'ADIF 导出',
+    'new-activity': '新建活动',
+    'monitor-source-change': '监听源切换',
+    'local-proxy-check': '本地代理检查',
+    'web-limit-block': '网页限制拦截',
+    'sync-toggle': '同步开关'
+  }
+  return labels[event] || event || '-'
+}
+
+function buildClientMetricRows(usage, ipLocations = new Map(), predicate = (item) => item.clientMetric) {
   return usage
-    .filter((item) => item.clientMetric)
+    .filter(predicate)
     .sort((a, b) => String(b.at).localeCompare(String(a.at)))
     .slice(0, 80)
     .map((item) => ({
       at: item.at || '',
       event: item.event || '',
+      eventLabel: formatClientMetricEvent(item.event),
       version: item.appVersion || '-',
       edition: item.edition || '-',
       platform: item.platform || '-',
       callsign: item.controlCallsign || item.profileCallsign || '-',
       records: Number(item.recordCount || 0),
+      durationSeconds: Number(item.durationSeconds || 0),
+      location: ipLocations.get(item.ip) || describeIpLocation(item.ip),
       detail: [
+        item.activityName ? `活动:${item.activityName}` : '',
+        item.filename ? `文件:${item.filename}` : '',
         item.source ? `源:${item.source}` : '',
         item.format ? `格式:${item.format}` : '',
         item.reason ? `原因:${item.reason}` : '',
@@ -2011,8 +2249,19 @@ async function monitorPage(req, res) {
   const profileStats = collectProfileStats(checkins, baseProfileStats)
   const callsignStats = collectCallsignStats(checkins)
   const usageStats = collectUsageStats(rangedUsage)
-  const clientMetricSummary = collectClientMetricSummary(rangedUsage)
-  const clientMetricRows = buildClientMetricRows(rangedUsage)
+  const desktopMetricPredicate = isDesktopClientMetric
+  const clientMetricSummary = collectClientMetricSummary(rangedUsage, desktopMetricPredicate)
+  const publicWebMetricSummary = collectClientMetricSummary(
+    rangedUsage,
+    (item) => item.clientMetric && item.edition === 'public-web'
+  )
+  const clientMetricIps = rangedUsage
+    .filter((item) => desktopMetricPredicate(item) && item.ip)
+    .map((item) => item.ip)
+  const clientIpLocations = await resolveIpLocations(clientMetricIps)
+  const clientMetricRows = buildClientMetricRows(rangedUsage, clientIpLocations, desktopMetricPredicate)
+  const clientSessionRows = collectClientSessionRows(rangedUsage, desktopMetricPredicate)
+  const clientIpRows = collectClientIpRows(rangedUsage, clientIpLocations, desktopMetricPredicate)
   const downloadStats = downloadLog.available ? collectDownloadStats(rangedDownloadEvents) : null
   const pendingRegistrationCount = registrations.filter((item) => item.status === 'pending').length
   const mergedProfiles = mergeProfileLists(baseProfilePayload.profiles, sharedProfilePayload.profiles)
@@ -2076,40 +2325,54 @@ async function monitorPage(req, res) {
       </tr>`
     )
     .join('') || '<tr><td colspan="10">暂无有效点名记录</td></tr>'
-  const adminLoginRows = rangedUsage
-    .filter((item) => item.event === 'admin-login')
-    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
-    .slice(0, 80)
-    .map(
-      (item) => `<tr>
-        <td>${formatBjt(item.at)}</td>
-        <td>${escapeHtml(item.username || '-')}</td>
-        <td>${escapeHtml(item.ip || '-')}</td>
-        <td>${escapeHtml(item.userAgent || '-')}</td>
-      </tr>`
-    )
-    .join('') || '<tr><td colspan="4">暂无后台登录记录</td></tr>'
   const clientMetricDetailRows = clientMetricRows
     .map(
       (item) => `<tr>
         <td>${formatBjt(item.at)}</td>
-        <td><span class="tag">${escapeHtml(item.event)}</span></td>
+        <td><span class="tag" title="${escapeHtml(item.event)}">${escapeHtml(item.eventLabel)}</span></td>
         <td>${escapeHtml(item.version)}</td>
         <td>${escapeHtml(item.edition)}</td>
         <td>${escapeHtml(item.platform)}</td>
         <td><strong>${escapeHtml(item.callsign)}</strong></td>
         <td>${item.records}</td>
+        <td>${formatDuration(item.durationSeconds)}</td>
         <td>${escapeHtml(item.detail)}</td>
-        <td>${escapeHtml(item.ip)}</td>
+        <td>${escapeHtml(item.location)} · ${escapeHtml(item.ip)}</td>
       </tr>`
     )
-    .join('') || '<tr><td colspan="9">暂无前台匿名统计事件</td></tr>'
+    .join('') || '<tr><td colspan="10">暂无前台匿名统计事件</td></tr>'
   const clientVersionRows = mapTopCounts(clientMetricSummary.versions)
     .map((item) => `<tr><td>${escapeHtml(item.name)}</td><td>${item.count}</td></tr>`)
     .join('') || '<tr><td colspan="2">暂无版本数据</td></tr>'
   const clientPlatformRows = mapTopCounts(clientMetricSummary.platforms)
     .map((item) => `<tr><td>${escapeHtml(item.name)}</td><td>${item.count}</td></tr>`)
     .join('') || '<tr><td colspan="2">暂无平台数据</td></tr>'
+  const clientSessionDetailRows = clientSessionRows
+    .map(
+      (item) => `<tr>
+        <td>${formatBjt(item.latestAt)}</td>
+        <td>${formatDuration(item.durationSeconds)}</td>
+        <td>${item.events}</td>
+        <td>${item.productiveEvents}</td>
+        <td><strong>${escapeHtml([...item.callsigns].join(' / ') || '-')}</strong></td>
+        <td>${escapeHtml([...item.versions].join(' / ') || '-')}</td>
+        <td>${escapeHtml([...item.platforms].join(' / ') || '-')}</td>
+        <td>${escapeHtml([...item.ips].slice(0, 3).join(' / ') || '-')}</td>
+      </tr>`
+    )
+    .join('') || '<tr><td colspan="8">暂无停留时长数据</td></tr>'
+  const clientIpDetailRows = clientIpRows
+    .map(
+      (item) => `<tr>
+        <td><a href="https://ipinfo.io/${encodeURIComponent(item.ip)}" target="_blank" rel="noreferrer">${escapeHtml(item.ip)}</a></td>
+        <td>${escapeHtml(item.location)}</td>
+        <td>${item.installs.size}</td>
+        <td>${item.events}</td>
+        <td>${escapeHtml([...item.platforms].join(' / ') || '-')}</td>
+        <td>${formatBjt(item.latestAt)}</td>
+      </tr>`
+    )
+    .join('') || '<tr><td colspan="6">暂无 IP 数据</td></tr>'
   const databaseSummary = {
     syncEnabled: overview.syncEnabled,
     syncPulls: overview.syncPulls,
@@ -2179,6 +2442,11 @@ async function monitorPage(req, res) {
             item.status !== 'rejected'
               ? `<form method="post" action="${basePath}/admin/registrations/${item.id}/reject"><input type="hidden" name="returnTo" value="${escapeHtml(registrationReturnTo)}" /><button type="submit">拒绝</button></form>`
               : ''
+          }
+          ${
+            item.status !== 'approved'
+              ? `<form method="post" action="${basePath}/admin/registrations/${item.id}/delete" onsubmit="return confirm('确认删除这条注册申请记录？删除后不可恢复。')"><input type="hidden" name="returnTo" value="${escapeHtml(registrationReturnTo)}" /><button class="danger-button" type="submit">删除</button></form>`
+              : ''
           }`
   const registrationRow = (item) => {
     const riskFlags = getRegistrationRiskFlags(item, registrations)
@@ -2246,6 +2514,7 @@ async function monitorPage(req, res) {
       .table-scroll table{border:0}
       .table-scroll th{position:sticky;top:0;z-index:1}
       .table-scroll td:first-child,.table-scroll th:first-child{padding-left:10px}
+      .table-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
       .warn-row{background:#fff8ef}
       .accent-row{background:#f4fbf5}
       .tag{display:inline-block;border:1px solid #cbd8d0;border-radius:999px;padding:2px 8px;background:#fff;white-space:nowrap}
@@ -2260,6 +2529,8 @@ async function monitorPage(req, res) {
       form{margin:0}
       button{background:#fff;border:1px solid #a8b6af;border-radius:6px;padding:5px 9px;font:inherit;font-weight:700;cursor:pointer}
       button:hover{border-color:#008c2a;color:#008c2a}
+      .danger-button{border-color:#e0aaa4;color:#b42318}
+      .danger-button:hover{border-color:#b42318;background:#fff4f2;color:#b42318}
       section{margin-top:14px;overflow:hidden}
       a{color:#0b78d0}
       .profile-search{display:flex;gap:10px;align-items:center;margin-bottom:12px}
@@ -2275,7 +2546,7 @@ async function monitorPage(req, res) {
       .back-top{position:fixed;right:20px;bottom:24px;width:46px;height:46px;border-radius:999px;border:1px solid #a8b6af;background:#fff;color:#008c2a;font-size:24px;font-weight:900;box-shadow:0 10px 24px rgba(0,0,0,.12);display:grid;place-items:center;text-decoration:none}
       .back-top:hover{border-color:#008c2a;background:#f3fbf5}
       @media(max-width:1100px){.cards,.funnel,.settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-      @media(max-width:700px){main{padding:14px}.cards,.funnel{grid-template-columns:1fr}.topbar{display:block}.top-actions{margin-top:10px}}
+      @media(max-width:700px){main{padding:14px}.cards,.funnel,.table-grid{grid-template-columns:1fr}.topbar{display:block}.top-actions{margin-top:10px}}
     </style></head><body><main id="top">
     <div class="topbar">
       <div><h1>HAM 台网点名后台</h1><div class="subtitle">本地版下载、数据库接入与共享库更新监测 · 当前范围：${rangeLabel} · 最近刷新 ${formatBjt(new Date().toISOString())}</div></div>
@@ -2300,24 +2571,31 @@ async function monitorPage(req, res) {
     </div>
     </section>
     <section id="client-activity">
-      <h2>前台匿名使用统计</h2>
+      <h2>本地版匿名心跳统计</h2>
       <div class="stat-strip">
-        <span class="stat-pill">活跃设备<strong>${clientMetricSummary.activeInstalls}</strong></span>
-        <span class="stat-pill">启动上报<strong>${clientMetricSummary.appStarts}</strong></span>
-        <span class="stat-pill">心跳上报<strong>${clientMetricSummary.appActives}</strong></span>
+        <span class="stat-pill">本地活跃设备<strong>${clientMetricSummary.activeInstalls}</strong></span>
         <span class="stat-pill">有效操作<strong>${clientMetricSummary.productiveEvents}</strong></span>
+        <span class="stat-pill">新建活动<strong>${clientMetricSummary.newActivities}</strong></span>
+        <span class="stat-pill">同步开关<strong>${clientMetricSummary.syncToggles}</strong></span>
         <span class="stat-pill">Excel / ADIF<strong>${clientMetricSummary.excelExports} / ${clientMetricSummary.adifExports}</strong></span>
+        <span class="stat-pill">启动/心跳<strong>${clientMetricSummary.appStarts} / ${clientMetricSummary.appActives}</strong></span>
+        <span class="stat-pill">网页体验事件<strong>${publicWebMetricSummary.total}</strong></span>
         <span class="stat-pill">限制/代理问题<strong>${clientMetricSummary.issueEvents}</strong></span>
         <span class="stat-pill">最近上报<strong>${clientMetricSummary.latestAt ? formatBjt(clientMetricSummary.latestAt) : '暂无'}</strong></span>
       </div>
-      <div class="hint" style="margin-bottom:12px">这里按匿名安装 ID 聚合，优先看趋势和有效操作；单个 app-start/app-active 只是活跃信号，不再作为核心业务成果。</div>
+      <div class="hint" style="margin-bottom:12px">这里以下载安装/本地运行版的匿名心跳为主，网页体验版 public-web 只作为辅助参考；单个 app-start/app-active 只是活跃信号，不再作为核心业务成果。</div>
       <div class="table-grid">
         <div class="table-scroll"><table><thead><tr><th>版本</th><th>事件数</th></tr></thead><tbody>${clientVersionRows}</tbody></table></div>
         <div class="table-scroll"><table><thead><tr><th>平台</th><th>事件数</th></tr></thead><tbody>${clientPlatformRows}</tbody></table></div>
       </div>
+      <div class="table-grid">
+        <div class="table-scroll"><table><thead><tr><th>IP</th><th>归属简析</th><th>设备</th><th>事件</th><th>平台</th><th>最近</th></tr></thead><tbody>${clientIpDetailRows}</tbody></table></div>
+        <div class="table-scroll"><table><thead><tr><th>最近</th><th>停留估算</th><th>事件</th><th>有效</th><th>呼号</th><th>版本</th><th>平台</th><th>IP</th></tr></thead><tbody>${clientSessionDetailRows}</tbody></table></div>
+      </div>
+      <div class="hint" style="margin-bottom:12px">停留时长按匿名安装 ID 的首次/最近上报及新版客户端 durationSeconds 估算；IP 简析本机/内网为本地判断，公网 IP 可点击外部服务进一步查看。</div>
       <details>
-        <summary>查看最近前台事件明细 ${clientMetricSummary.total} 条</summary>
-        <div class="table-scroll" style="margin-top:10px"><table><thead><tr><th>时间</th><th>事件</th><th>版本</th><th>形态</th><th>平台</th><th>呼号</th><th>记录数</th><th>细节</th><th>IP</th></tr></thead><tbody>${clientMetricDetailRows}</tbody></table></div>
+        <summary>查看最近本地版事件明细 ${clientMetricSummary.total} 条</summary>
+        <div class="table-scroll" style="margin-top:10px"><table><thead><tr><th>时间</th><th>事件</th><th>版本</th><th>形态</th><th>平台</th><th>呼号</th><th>记录数</th><th>停留</th><th>细节</th><th>IP</th></tr></thead><tbody>${clientMetricDetailRows}</tbody></table></div>
       </details>
     </section>
     <section>
@@ -2331,7 +2609,6 @@ async function monitorPage(req, res) {
     </section>
     <section id="usage-trend"><h2>本地版使用与同步趋势</h2><div class="table-scroll"><table><thead><tr><th>日期</th><th>本地版下载</th><th>主控呼号</th><th>活动日志</th><th>点名记录</th><th>Excel生成</th><th>Excel下载</th><th>数据库接入</th><th>同步拉取</th><th>上传更新</th><th>合并资料</th></tr></thead><tbody>${trendRows}</tbody></table></div></section>
     <section id="checkin-details"><h2>主控活动、点名记录与 Excel 明细</h2><div class="table-scroll"><table><thead><tr><th>时间</th><th>类型</th><th>主控呼号</th><th>活动名</th><th>记录数</th><th>Excel</th><th>Excel下载</th><th>同步</th><th>IP</th><th>客户端</th></tr></thead><tbody>${effectiveRows}</tbody></table></div></section>
-    <section id="admin-login-details"><h2>后台登录明细</h2><div class="hint" style="margin-bottom:10px">管理审计数据，不代表前台用户活跃。</div><div class="table-scroll"><table><thead><tr><th>时间</th><th>账号</th><th>IP</th><th>客户端</th></tr></thead><tbody>${adminLoginRows}</tbody></table></div></section>
     <section id="registrations">
       <h2>数据库治理与同步查询</h2>
       <div class="stat-strip">
@@ -2579,6 +2856,212 @@ async function fetchBrandmeisterDevice(req, res) {
   sendJson(res, 200, { ok: true, id, device })
 }
 
+function decodeDashboardText(value) {
+  return String(value || '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function parseDstarDashboardOnServer(html, selectedModule = '') {
+  const rowMatches = [...String(html || '').matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)]
+  const rows = rowMatches.map((match) => {
+    const cells = [...match[1].matchAll(/<(th|td)\b([^>]*)>([\s\S]*?)<\/\1>/gi)].map((cell) => ({
+      type: cell[1].toLowerCase(),
+      attrs: cell[2] || '',
+      html: cell[3] || '',
+      text: decodeDashboardText(cell[3])
+    }))
+    return { cells, html: match[1] }
+  })
+  const headerIndex = rows.findIndex(({ cells }) => {
+    const headers = cells.filter((cell) => cell.type === 'th').map((cell) => cell.text.toLowerCase())
+    return (
+      headers.some((header) => /callsign|呼号/.test(header)) &&
+      headers.some((header) => /last heard|最后通联|最后呼叫/.test(header)) &&
+      headers.some((header) => /via|peer|gateway|网关|经由|节点/.test(header))
+    )
+  })
+  if (headerIndex < 0) return { supported: false, rows: [] }
+  const headers = rows[headerIndex].cells.map((cell) => cell.text.toLowerCase())
+  const findHeader = (pattern) => headers.findIndex((header) => pattern.test(header))
+  const callsignIndex = findHeader(/callsign|呼号/)
+  const timeIndex = findHeader(/last heard|最后通联|最后呼叫/)
+  const viaIndex = findHeader(/via|peer|gateway|网关|经由|节点/)
+  const suffixIndex = findHeader(/suffix|后缀|语音模式/)
+  const moduleIndex = findHeader(/^module$|模块/)
+  const parsedRows = []
+  for (const row of rows.slice(headerIndex + 1)) {
+    const cells = row.cells
+    if (cells.length <= Math.max(callsignIndex, timeIndex, viaIndex)) continue
+    const callsign = String(cells[callsignIndex]?.text || '').split(/\s+/)[0].toUpperCase()
+    if (!/^[A-Z0-9]{3,}$/.test(callsign)) continue
+    const lastCell = String(cells.at(-1)?.text || '').toUpperCase()
+    const module = String(
+      moduleIndex >= 0 ? cells[moduleIndex]?.text || '' : /^[A-Z]$/.test(lastCell) ? lastCell : ''
+    ).toUpperCase()
+    if (selectedModule && module && module !== selectedModule) continue
+    parsedRows.push({
+      callsign,
+      suffix: suffixIndex >= 0 ? cells[suffixIndex]?.text || '' : '',
+      via: cells[viaIndex]?.text || '',
+      timeText: cells[timeIndex]?.text || '',
+      module,
+      isSpeaking: /<img\b[^>]+src=["'][^"']*(?:tx|speaker)/i.test(row.html),
+      rawText: cells.map((cell) => cell.text).join(' | ')
+    })
+  }
+  return { supported: true, rows: parsedRows.slice(0, 30) }
+}
+
+function parseYsfDashboardOnServer(html) {
+  const tableMatches = [...String(html || '').matchAll(/<table\b([^>]*)>([\s\S]*?)<\/table>/gi)]
+  const parsedRows = []
+  let supported = false
+  for (const tableMatch of tableMatches) {
+    const tableAttrs = tableMatch[1] || ''
+    const tableHtml = tableMatch[2] || ''
+    const rows = [...tableHtml.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map((match) => {
+      const cells = [...match[1].matchAll(/<(th|td)\b([^>]*)>([\s\S]*?)<\/\1>/gi)].map((cell) => ({
+        type: cell[1].toLowerCase(),
+        attrs: cell[2] || '',
+        html: cell[3] || '',
+        text: decodeDashboardText(cell[3])
+      }))
+      return { cells, html: match[1] }
+    })
+    const headerIndex = rows.findIndex(({ cells }) => {
+      const headers = cells.filter((cell) => cell.type === 'th').map((cell) => cell.text.toLowerCase())
+      const hasCallsign = headers.some((header) => /^call$|callsign|呼号/.test(header))
+      const hasTime = headers.some((header) => /time|时间/.test(header))
+      const hasRoute = headers.some((header) => /gateway|网关|target|目标|status|stream/.test(header))
+      return headers.length >= 3 && hasCallsign && hasTime && hasRoute
+    })
+    if (headerIndex < 0) continue
+    supported = true
+    const headers = rows[headerIndex].cells.map((cell) => cell.text.toLowerCase())
+    const findHeader = (pattern) => headers.findIndex((header) => pattern.test(header))
+    const callsignIndex = findHeader(/^call$|callsign|呼号/)
+    const gatewayIndex = findHeader(/gateway|网关/)
+    const radioIndex = findHeader(/radio|设备/)
+    const targetIndex = findHeader(/target|目标/)
+    const streamIndex = findHeader(/stream/)
+    const timeIndex = findHeader(/utc.*time|time.*qso|^time|时间/)
+    const statusIndex = findHeader(/status|状态/)
+    for (const row of rows.slice(headerIndex + 1)) {
+      const cells = row.cells
+      if (cells.length <= callsignIndex) continue
+      const callsign = String(cells[callsignIndex]?.text || '').split(/\s+/)[0].toUpperCase()
+      if (!/^[A-Z0-9/-]{3,}$/.test(callsign)) continue
+      parsedRows.push({
+        callsign,
+        gateway: gatewayIndex >= 0 ? cells[gatewayIndex]?.text || '' : '',
+        radio: radioIndex >= 0 ? cells[radioIndex]?.text || '' : '',
+        target: targetIndex >= 0 ? cells[targetIndex]?.text || '' : '',
+        stream: streamIndex >= 0 ? cells[streamIndex]?.text || '' : '',
+        timeText: timeIndex >= 0 ? cells[timeIndex]?.text || '' : '',
+        status: statusIndex >= 0 ? cells[statusIndex]?.text || '' : '',
+        isSpeaking: /<img\b[^>]+src=["'][^"']*(?:tx|speaker)/i.test(row.html) ||
+          /currtx|currently.?tx/i.test(tableAttrs),
+        rawText: cells.map((cell) => cell.text).join(' | ')
+      })
+    }
+  }
+  return { supported, rows: parsedRows.slice(0, 30) }
+}
+
+async function fetchDstarLastHeardApi(req, res) {
+  const url = getRequestUrl(req)
+  const target = url.searchParams.get('url')
+  const module = String(url.searchParams.get('module') || '').toUpperCase()
+  if (!target) {
+    sendJson(res, 400, { ok: false, error: 'missing dashboard url' })
+    return
+  }
+  let parsedUrl
+  try {
+    parsedUrl = new URL(target)
+  } catch {
+    sendJson(res, 400, { ok: false, error: 'invalid dashboard url' })
+    return
+  }
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    sendJson(res, 400, { ok: false, error: 'unsupported dashboard protocol' })
+    return
+  }
+  try {
+    const response = await fetchLocalDeviceWithTimeout(parsedUrl, {
+      headers: { accept: 'text/html,*/*' }
+    }, 12000)
+    const html = await response.text()
+    if (!response.ok) {
+      sendJson(res, response.status, { ok: false, error: `Dashboard HTTP ${response.status}` })
+      return
+    }
+    const parsed = parseDstarDashboardOnServer(html, module)
+    if (!parsed.supported) {
+      sendJson(res, 422, { ok: false, error: '该页面暂时没有可读取的 D-Star Last Heard 表格' })
+      return
+    }
+    sendJson(res, 200, { ok: true, module, rows: parsed.rows })
+  } catch (error) {
+    sendJson(res, 502, {
+      ok: false,
+      error: error?.name === 'AbortError' ? 'D-Star Dashboard连接超时' : `D-Star Dashboard连接失败：${error?.message || 'unknown error'}`
+    })
+  }
+}
+
+async function fetchYsfLastHeardApi(req, res) {
+  const url = getRequestUrl(req)
+  const target = url.searchParams.get('url')
+  if (!target) {
+    sendJson(res, 400, { ok: false, error: 'missing dashboard url' })
+    return
+  }
+  let parsedUrl
+  try {
+    parsedUrl = new URL(target)
+  } catch {
+    sendJson(res, 400, { ok: false, error: 'invalid dashboard url' })
+    return
+  }
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    sendJson(res, 400, { ok: false, error: 'unsupported dashboard protocol' })
+    return
+  }
+  try {
+    const response = await fetchLocalDeviceWithTimeout(parsedUrl, {
+      headers: { accept: 'text/html,*/*' }
+    }, 12000)
+    const html = await response.text()
+    if (!response.ok) {
+      sendJson(res, response.status, { ok: false, error: `Dashboard HTTP ${response.status}` })
+      return
+    }
+    const parsed = parseYsfDashboardOnServer(html)
+    if (!parsed.supported) {
+      sendJson(res, 422, { ok: false, error: '该页面暂时没有可读取的 YSF Last Heard 表格' })
+      return
+    }
+    sendJson(res, 200, { ok: true, rows: parsed.rows })
+  } catch (error) {
+    sendJson(res, 502, {
+      ok: false,
+      error: error?.name === 'AbortError' ? 'YSF Dashboard连接超时' : `YSF Dashboard连接失败：${error?.message || 'unknown error'}`
+    })
+  }
+}
+
 async function proxyMmdvmPage(req, res) {
   const url = getRequestUrl(req)
   const target = url.searchParams.get('url')
@@ -2665,9 +3148,21 @@ async function serveStatic(req, res) {
     const stat = await fs.stat(file)
     if (!stat.isFile()) throw new Error('not file')
     const ext = path.extname(file)
-    res.writeHead(200, { 'content-type': mimeTypes[ext] || 'application/octet-stream' })
+    const cacheControl = pathname === '/index.html'
+      ? 'no-cache, no-store, must-revalidate'
+      : pathname.startsWith('/assets/')
+        ? 'public, max-age=31536000, immutable'
+        : 'no-cache'
+    res.writeHead(200, {
+      'content-type': mimeTypes[ext] || 'application/octet-stream',
+      'cache-control': cacheControl
+    })
     createReadStream(file).pipe(res)
   } catch {
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-cache, no-store, must-revalidate'
+    })
     createReadStream(path.join(distDir, 'index.html'))
       .on('error', () => send(res, 404, 'Not Found'))
       .pipe(res)
@@ -2694,6 +3189,9 @@ export async function startServer({ host = '127.0.0.1', port = defaultPort } = {
       if (req.method === 'OPTIONS' && url.pathname === '/api/client-events') {
         return send(res, 204, '', clientEventCorsHeaders)
       }
+      if (req.method === 'OPTIONS' && url.pathname === '/api/checkins') {
+        return send(res, 204, '', checkinCorsHeaders)
+      }
       if (req.method === 'OPTIONS' && url.pathname.startsWith('/api/profiles/')) {
         return send(res, 204, '', profileCorsHeaders)
       }
@@ -2704,6 +3202,8 @@ export async function startServer({ host = '127.0.0.1', port = defaultPort } = {
       if (req.method === 'POST' && url.pathname === '/api/profiles/push') return pushSharedProfiles(req, res)
       if (req.method === 'GET' && url.pathname === '/api/brandmeister/last-heard') return fetchBrandmeisterLastHeard(req, res)
       if (req.method === 'GET' && url.pathname === '/api/brandmeister/device') return fetchBrandmeisterDevice(req, res)
+      if (req.method === 'GET' && url.pathname === '/api/dstar/last-heard') return fetchDstarLastHeardApi(req, res)
+      if (req.method === 'GET' && url.pathname === '/api/ysf/last-heard') return fetchYsfLastHeardApi(req, res)
       if (req.method === 'GET' && url.pathname === '/mmdvm-proxy') return proxyMmdvmPage(req, res)
       if (req.method === 'GET' && url.pathname === '/admin/login') return renderAdminLogin(req, res)
       if (req.method === 'POST' && url.pathname === '/admin/login') return handleAdminLogin(req, res)
@@ -2712,6 +3212,10 @@ export async function startServer({ host = '127.0.0.1', port = defaultPort } = {
       const registrationAction = url.pathname.match(/^\/admin\/registrations\/([^/]+)\/(approve|reject)$/)
       if (req.method === 'POST' && registrationAction) {
         return handleProfileRegistrationAction(req, res, registrationAction[1], registrationAction[2])
+      }
+      const registrationDelete = url.pathname.match(/^\/admin\/registrations\/([^/]+)\/delete$/)
+      if (req.method === 'POST' && registrationDelete) {
+        return handleProfileRegistrationDelete(req, res, registrationDelete[1])
       }
       const registrationKeyDownload = url.pathname.match(/^\/admin\/registrations\/([^/]+)\/key$/)
       if (req.method === 'GET' && registrationKeyDownload) {

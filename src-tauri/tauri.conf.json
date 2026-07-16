@@ -35,7 +35,7 @@
     "publisher": "BH1JSS",
     "category": "Utility",
     "shortDescription": "HAM 台网点名主控台",
-    "longDescription": "面向业余无线电台网活动的点名记录工具，支持 BM DMR、MMDVM、HAMBOX、FMO 候选源和 Excel / ADIF 导出。",
+    "longDescription": "面向业余无线电台网活动的点名记录工具，支持 BM DMR、MMDVM、HAMBOX、FMO、YSF 与 D-Star Dashboard 候选源和 Excel / ADIF 导出。",
     "icon": [
       "../build/icon.png",
       "../build/icon.icns",

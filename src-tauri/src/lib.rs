@@ -57,6 +57,14 @@ fn handle_client(mut stream: TcpStream) {
     return;
   }
 
+  if method == "GET"
+    && (raw_path.starts_with("/api/ysf/last-heard?")
+      || raw_path.starts_with("/api/dstar/last-heard?"))
+  {
+    proxy_public_dashboard(&mut stream, raw_path);
+    return;
+  }
+
   if method == "POST" && raw_path == "/api/checkins" {
     send_response(
       &mut stream,
@@ -204,6 +212,35 @@ fn proxy_brandmeister_device(stream: &mut TcpStream, raw_path: &str) {
       }
     }
     Err(_) => send_response(stream, 200, "application/json; charset=utf-8", format!(r#"{{"ok":true,"id":"{id}","device":null}}"#).into_bytes()),
+  }
+}
+
+fn proxy_public_dashboard(stream: &mut TcpStream, raw_path: &str) {
+  let url = format!("https://fmo.bh1jss.net/checkin{raw_path}");
+  match ureq::get(&url)
+    .set("accept", "application/json")
+    .timeout(Duration::from_secs(15))
+    .call()
+  {
+    Ok(response) => {
+      let mut body = Vec::new();
+      if response.into_reader().read_to_end(&mut body).is_ok() {
+        send_response(stream, 200, "application/json; charset=utf-8", body);
+      } else {
+        send_response(
+          stream,
+          502,
+          "application/json; charset=utf-8",
+          r#"{"ok":false,"error":"Dashboard 数据读取失败"}"#.as_bytes().to_vec(),
+        );
+      }
+    }
+    Err(error) => send_response(
+      stream,
+      502,
+      "application/json; charset=utf-8",
+      format!(r#"{{"ok":false,"error":"Dashboard 网络请求失败：{error}"}}"#).into_bytes(),
+    ),
   }
 }
 

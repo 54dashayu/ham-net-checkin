@@ -1038,12 +1038,6 @@ h2 {
   font-weight: 700;
 }
 
-.source-field .emphasized-source-select,
-.source-field .emphasized-source-option {
-  color: var(--danger);
-  font-weight: 900;
-}
-
 .protocol-field {
   min-width: 0;
 }
@@ -1100,6 +1094,15 @@ h2 {
   top: 6px;
   white-space: nowrap;
   z-index: 2;
+}
+
+.fmo-inline-warning.dashboard-latency-warning {
+  left: auto;
+  margin: 6px 8px;
+  max-width: none;
+  position: relative;
+  right: auto;
+  top: auto;
 }
 
 .fmo-list tr {
@@ -1397,11 +1400,11 @@ tbody tr:nth-child(even) {
 }
 
 .fmo-list .qth-col {
-  width: 24%;
+  width: 20%;
 }
 
 .fmo-list .device-col {
-  width: 18%;
+  width: 16%;
 }
 
 .fmo-list .time-col {
@@ -1409,11 +1412,11 @@ tbody tr:nth-child(even) {
 }
 
 .fmo-list .callsign-col {
-  width: 96px;
+  width: 140px;
 }
 
 .fmo-list .mode-col {
-  width: 92px;
+  width: 54px;
 }
 
 .fmo-list .power-col {

@@ -34,6 +34,13 @@ import { gridToAddressText, isMaidenheadGrid } from './services/gridAddress'
 import { fetchHamboxLastHeard } from './services/hamboxClient'
 import { localizeBmQth } from './services/localizedAddress'
 import { fetchMmdvmLastHeard } from './services/mmdvmClient'
+import {
+  fetchYsfDashboard,
+  fetchYsfReflectors,
+  getVerifiedChinaYsfReflectors,
+  getYsfDashboardStatus
+} from './services/ysfClient'
+import { fetchDstarLastHeard, getVerifiedChinaDstarRooms } from './services/dstarClient'
 
 const STORAGE_KEY = 'ham-net-checkin-records-v1'
 const PROFILE_KEY = 'ham-net-checkin-profiles-v1'
@@ -72,6 +79,7 @@ const initialActivityId =
   new URLSearchParams(window.location.search).get('activity') ||
   (isBootingLocalWebViewShell() ? localStorage.getItem(LOCAL_ACTIVITY_ID_KEY) || '' : '')
 const currentActivityId = ref(initialActivityId)
+const telemetrySessionStartedAt = Date.now()
 const scopedKey = (key) => (currentActivityId.value ? `${key}:${currentActivityId.value}` : key)
 const serverBasePath = window.location.pathname.startsWith('/checkin') ? '/checkin' : ''
 const serverApiPath = (path) => `${serverBasePath}${path}`
@@ -86,7 +94,7 @@ const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || get
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
-const appVersion = 'V1.01.2'
+const appVersion = 'V1.02'
 
 const i18nMessages = {
   zh: {
@@ -369,15 +377,15 @@ const browserBridgeDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/H
 const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadWin64'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.2-Win64-Setup.exe'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.02-Win64-Setup.exe'
   },
   {
     label: t('desktopDownloadMacOS'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.2-macOS.dmg'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.02-macOS.dmg'
   },
   {
     label: t('desktopDownloadChecksum'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.01.2.txt'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.02.txt'
   }
 ])
 const sourceFieldLabel = (source) =>
@@ -386,9 +394,6 @@ const sourcePlaceholder = (source) =>
   source.addressKind === 'network' ? t('sourcePending') : source.placeholder
 const sourceDisplayName = (source) => sourceFieldLabel(source)
 const monitorSourceOptionLabel = (source) => {
-  if (isPublicWebVersion.value && source.webLabel) {
-    return language.value === 'en' ? `${sourceDisplayName(source)} *` : source.webLabel
-  }
   return sourceDisplayName(source)
 }
 const candidateSourceLabel = (label) => {
@@ -587,51 +592,93 @@ const monitorSourceOptions = [
   {
     value: 'bm',
     label: 'BM DMR',
-    webLabel: '*BM DMR',
     fieldLabel: 'BM 通话组',
     placeholder: '46001',
-    addressKind: 'bm',
-    emphasized: true
+    addressKind: 'bm'
   },
   {
     value: 'ysf',
     label: 'YSF',
     fieldLabel: 'YSF 反射器',
-    placeholder: '监听功能待开放',
-    addressKind: 'network'
-  },
-  {
-    value: 'fcs',
-    label: 'FCS',
-    fieldLabel: 'FCS 反射器',
-    placeholder: '监听功能待开放',
+    placeholder: '选择 YSF Reflector',
     addressKind: 'network'
   },
   {
     value: 'dstar',
     label: 'D-Star / XLX',
     fieldLabel: 'D-Star / XLX 反射器',
-    placeholder: '监听功能待开放',
+    placeholder: '选择 D-Star / XLX 反射器模块',
     addressKind: 'network'
   },
   {
     value: 'p25',
     label: 'P25',
     fieldLabel: 'P25 反射器',
-    placeholder: '监听功能待开放',
-    addressKind: 'network'
+    placeholder: '监听功能待开发',
+    addressKind: 'placeholder'
   },
   {
     value: 'nxdn',
     label: 'NXDN',
     fieldLabel: 'NXDN 反射器',
-    placeholder: '监听功能待开放',
-    addressKind: 'network'
+    placeholder: '监听功能待开发',
+    addressKind: 'placeholder'
+  },
+  {
+    value: 'fcs',
+    label: 'FCS',
+    fieldLabel: 'FCS 反射器',
+    placeholder: '监听功能待开发',
+    addressKind: 'placeholder'
   }
 ]
 const monitorSourceByValue = Object.fromEntries(
   monitorSourceOptions.map((option) => [option.value, option])
 )
+const ysfReflectors = ref([])
+const chinaNetworkEndpoints = reactive({
+  ysf: getVerifiedChinaYsfReflectors().map((row) => ({
+    ...row,
+    dashboardStatus: 'verified',
+    value: row.id,
+    label: `${row.id} · ${row.name}${row.description ? ` · ${row.description}` : ''}`
+  })),
+  dstar: getVerifiedChinaDstarRooms().map((room) => ({
+    ...room,
+    value: room.id
+  }))
+})
+const networkEndpointOptions = computed(() => chinaNetworkEndpoints[fmoConfig.source] || [])
+const currentNetworkEndpoint = computed(() =>
+  networkEndpointOptions.value.find((option) => option.value === fmoConfig.networkTarget) || null
+)
+const isBmBackedNetworkSource = computed(() => Boolean(currentNetworkEndpoint.value?.bmTalkgroup))
+const ensureNetworkEndpointSelection = () => {
+  const options = networkEndpointOptions.value
+  if (!options.length) return
+  if (!options.some((option) => option.value === fmoConfig.networkTarget)) {
+    fmoConfig.networkTarget = options[0].value
+  }
+}
+
+const loadYsfReflectors = async () => {
+  const rows = await fetchYsfReflectors()
+  ysfReflectors.value = rows
+  const verified = [
+    ...getVerifiedChinaYsfReflectors(),
+    ...rows
+  ]
+    .filter((row) => getYsfDashboardStatus(row) === 'verified')
+    .filter((row, index, all) => all.findIndex((item) => item.id === row.id) === index)
+    .sort((a, b) => a.number.localeCompare(b.number))
+  chinaNetworkEndpoints.ysf = verified.map((row) => ({
+    ...row,
+    dashboardStatus: 'verified',
+    value: row.id,
+    label: `${row.id} · ${row.name}${row.description ? ` · ${row.description}` : ''}`
+  }))
+  ensureNetworkEndpointSelection()
+}
 
 const toHalfWidth = (value) =>
   String(value || '')
@@ -1299,11 +1346,13 @@ const sendClientMetric = (event, extra = {}) => {
     event,
     client: getClientTelemetryContext(),
     activityId: currentActivityId.value || 'default',
+    activityName: activityConfig.name || getDefaultActivityName(),
     controlCallsign: activityConfig.controlCallsign,
     profileCallsign: profileSyncConfig.registrationCallsign,
     recordCount: records.value.length,
     registered: hasApprovedProfileAccess.value,
     source: fmoConfig.source,
+    durationSeconds: Math.max(0, Math.round((Date.now() - telemetrySessionStartedAt) / 1000)),
     ...extra
   }
   fetch(clientTelemetryApiPath('/api/client-events'), {
@@ -1355,7 +1404,10 @@ const publicWebExpired = computed(
 )
 const publicWebLimitText = computed(() =>
   hasApprovedProfileAccess.value
-    ? i18nText('*已导入验证密钥：网络版已启用完整功能、共享同步和本地代理。', '*Verification key imported: full web features, shared sync and local proxy are enabled.')
+    ? i18nText(
+        '*已导入验证密钥：网络版已启用完整功能、共享同步和本地代理。网络版受服务器性能限制，强烈建议使用本地版。',
+        '*Verification key imported: full web features, shared sync and local proxy are enabled. The web edition is limited by server performance; the local edition is strongly recommended.'
+      )
     : language.value === 'en'
       ? `*Trial web version: BM DMR only, 1 activity, up to 80 records, 1 Excel download, 1 ADIF download, 75 minutes. Remaining ${publicTimeRemainingText.value}`
       : `*未注册网络版：仅 BM DMR、1 个活动、最多 80 条记录、Excel 与 ADIF 各下载 1 次、使用 75 分钟。剩余 ${publicTimeRemainingText.value}`
@@ -1391,15 +1443,23 @@ const isPrivateLanAddress = (address) => {
 
 const publicNetworkWarning = computed(() => {
   if (!isPublicWebVersion.value) return ''
+  if (currentMonitorSource.value.addressKind === 'placeholder') return ''
+  if (['ysf', 'dstar'].includes(fmoConfig.source)) return ''
   if (canUseLocalProxyForCurrentSource.value) return ''
   if (isLocalProxyCapableSource.value && !hasApprovedProfileAccess.value) {
     return t('localProxyApprovalRequired')
   }
-  if (fmoConfig.source !== 'bm') return i18nText('网络版仅支持 BM DMR 网络监听，当前监听源请使用本地版。', 'The web version only supports BM DMR monitoring. Use the desktop app for this source.')
+  if (fmoConfig.source !== 'bm' && !isBmBackedNetworkSource.value) return i18nText('当前监听源没有可用的 BM 在线桥接。', 'This source has no available BM online bridge.')
   return ''
 })
 
 const fmoAddressWarning = computed(() =>
+  (['ysf', 'dstar'].includes(fmoConfig.source)
+      ? i18nText(
+        '通过网络获取 Dashboard 数据，延迟较大！建议使用本地版监听 MMDVM。',
+        'Dashboard data fetched over the network has significant latency! Use the local edition with MMDVM monitoring.'
+      )
+    : '') ||
   publicNetworkWarning.value ||
   (fmoConfig.source === 'fmo' && activeMonitorAddress.value && !canUseLocalProxyForCurrentSource.value
     ? getAddressWarning(activeMonitorAddress.value, fmoConfig.protocol)
@@ -1687,13 +1747,50 @@ const applyProfile = (profile, overwrite = false) => {
   })
 }
 
+const isChineseAmateurCallsign = (value) =>
+  /^B[A-Z]\d[A-Z]{2,3}$/.test(String(value || ''))
+
+const isLikelyYsfRadioSuffix = (value) =>
+  /^(?:FTM?\d{1,4}[A-Z]{0,2}|FT\d{1,4}[A-Z]{0,2}|\d{1,4}(?:D|DR|R)?|GPS|MOBILE|PORTABLE)$/.test(
+    String(value || '')
+  )
+
+const stripYsfCustomSuffix = (value) => {
+  const normalized = normalizeCallsign(value)
+  const slashBase = normalized.split('/').filter(Boolean)[0] || ''
+  if (slashBase !== normalized) return slashBase
+
+  // YSF radios often append a model name without a separator:
+  // BI4KNE3DR, BA4SME5DR, BI4JPQ400, BA1AAFTM400D.
+  for (const callsignLength of [6, 5]) {
+    const base = normalized.slice(0, callsignLength)
+    const suffix = normalized.slice(callsignLength)
+    if (isChineseAmateurCallsign(base) && suffix && isLikelyYsfRadioSuffix(suffix)) {
+      return base
+    }
+  }
+  return normalized
+}
+
+const candidateForStaging = (candidate) => {
+  if (fmoConfig.source !== 'ysf' && candidate?.mode !== 'YSF') return candidate
+  const baseCallsign = stripYsfCustomSuffix(candidate?.callsign)
+  if (!baseCallsign || baseCallsign === candidate.callsign) return candidate
+  return {
+    ...candidate,
+    callsign: baseCallsign,
+    displayCallsign: candidate.callsign
+  }
+}
+
 const stageFmoCandidate = (candidate) => {
   if (!candidate?.callsign) return
+  const stagedCandidate = candidateForStaging(candidate)
   const stagedWithoutCurrent = stagedFmoCandidates.value.filter(
-    (item) => item.id !== candidate.id && item.callsign !== candidate.callsign
+    (item) => item.id !== stagedCandidate.id && item.callsign !== stagedCandidate.callsign
   )
-  stagedFmoCandidates.value = [...stagedWithoutCurrent, candidate].slice(-4)
-  showNotice(i18nText(`已加入备选区 ${candidate.callsign}`, `Queued ${candidate.callsign}`))
+  stagedFmoCandidates.value = [...stagedWithoutCurrent, stagedCandidate].slice(-4)
+  showNotice(i18nText(`已加入备选区 ${stagedCandidate.callsign}`, `Queued ${stagedCandidate.callsign}`))
 }
 
 const removeStagedFmoCandidate = (candidate) => {
@@ -1708,7 +1805,9 @@ const clearStagedFmoCandidates = () => {
 
 const chooseFmoCandidate = (candidate) => {
   if (!candidate?.callsign) return
-  const { prefix, callsign } = splitRecordCallsign(candidate.callsign)
+  const selectedCallsign =
+    candidate.mode === 'YSF' ? stripYsfCustomSuffix(candidate.callsign) : candidate.callsign
+  const { prefix, callsign } = splitRecordCallsign(selectedCallsign)
   form.prefix = prefix
   form.callsign = callsign
   form.qth = ''
@@ -2450,6 +2549,52 @@ const normalizeHamboxQso = (item, index, targetName = '') => {
   }
 }
 
+const normalizeYsfQso = (item, index, targetName = '') => {
+  const callsign = normalizeCallsign(item.callsign || '')
+  if (!callsign) return null
+  const profile = profileByCallsign.value.get(callsign)
+  return {
+    id: `ysf-${item.timeText || index}-${callsign}-${item.stream || ''}`,
+    callsign,
+    time: parseMmdvmTime(item.timeText),
+    durationSeconds: 0,
+    liveStartedAt: /tx|transmit|active/i.test(item.status || '') ? Date.now() : 0,
+    qth: profile?.qth || '',
+    grid: '',
+    device: item.radio || profile?.device || '',
+    power: profile?.power || '',
+    mode: 'YSF',
+    comment: [item.gateway, item.target, item.stream ? `Stream ${item.stream}` : ''].filter(Boolean).join(' / '),
+    relayName: targetName,
+    sourceLabel: 'YSF Dashboard',
+    isSpeaking: /tx|transmit|active/i.test(item.status || ''),
+    raw: item
+  }
+}
+
+const normalizeDstarQso = (item, index, targetName = '') => {
+  const callsign = normalizeCallsign(item.callsign || '')
+  if (!callsign) return null
+  const profile = profileByCallsign.value.get(callsign)
+  return {
+    id: `dstar-${item.timeText || index}-${callsign}-${item.module || ''}`,
+    callsign,
+    time: parseMmdvmTime(item.timeText),
+    durationSeconds: 0,
+    liveStartedAt: item.isSpeaking ? Date.now() : 0,
+    qth: profile?.qth || '',
+    grid: '',
+    device: item.suffix || profile?.device || '',
+    power: profile?.power || '',
+    mode: 'D-STAR',
+    comment: [item.via, item.module ? `Module ${item.module}` : ''].filter(Boolean).join(' / '),
+    relayName: targetName,
+    sourceLabel: 'D-Star Dashboard',
+    isSpeaking: Boolean(item.isSpeaking),
+    raw: item
+  }
+}
+
 const normalizeBmQso = (item, index, targetName = '') => {
   const callsign =
     normalizeCallsign(
@@ -2595,7 +2740,7 @@ const enrichBmCandidate = async (candidate) => {
   }
 }
 
-const handleBmPacket = (packet, talkgroup) => {
+const handleBmPacket = (packet, talkgroup, displayName = '') => {
   if (packet.startsWith('0')) {
     bmSocket.value?.send('40')
     return
@@ -2609,10 +2754,10 @@ const handleBmPacket = (packet, talkgroup) => {
     bmSocket.value?.send(
       `42["searchMongo",${JSON.stringify({ query: `DestinationID = ${talkgroup}`, amount: 80 })}]`
     )
-    currentRelayName.value = `BrandMeister TG${talkgroup}`
+    currentRelayName.value = displayName || `BrandMeister TG${talkgroup}`
     fmoStatus.value = i18nText(
-      `BM 实时监听中 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`,
-      `BM live monitoring ${new Date().toLocaleTimeString('en-US', { hour12: false })}`
+      `${displayName || 'BM'} 实时监听中 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`,
+      `${displayName || 'BM'} live monitoring ${new Date().toLocaleTimeString('en-US', { hour12: false })}`
     )
     return
   }
@@ -2631,7 +2776,7 @@ const handleBmPacket = (packet, talkgroup) => {
     return
   }
   if (String(call.DestinationID || '') !== talkgroup) return
-  const candidate = normalizeBmQso(call, fmoCandidates.value.length, `BrandMeister TG${talkgroup}`)
+  const candidate = normalizeBmQso(call, fmoCandidates.value.length, displayName || `BrandMeister TG${talkgroup}`)
   if (!candidate) return
   const isStartupHistory = eventPayload?.[1]?.topic === 'LH-Startup'
   candidate.sourceLabel = isStartupHistory ? 'BM最近通联' : 'BM实时'
@@ -3001,8 +3146,8 @@ const refreshHamboxCandidates = async () => {
   }
 }
 
-const refreshBrandmeisterCandidates = async () => {
-  const talkgroup = String(fmoConfig.bmTalkgroup || '').replace(/\D+/g, '')
+const refreshBrandmeisterCandidates = async ({ talkgroup: requestedTalkgroup = '', source = 'bm', displayName = '' } = {}) => {
+  const talkgroup = String(requestedTalkgroup || fmoConfig.bmTalkgroup || '').replace(/\D+/g, '')
   if (!talkgroup) {
     showNotice(i18nText('请填写 BrandMeister 通话组 ID', 'Enter a BrandMeister talkgroup ID.'))
     return
@@ -3012,26 +3157,26 @@ const refreshBrandmeisterCandidates = async () => {
   closeFmoClient()
   fmoRefreshing.value = true
   fmoStatus.value = i18nText(`连接 BM TG${talkgroup}`, `Connecting BM TG${talkgroup}`)
-  currentRelayName.value = `BrandMeister TG${talkgroup}`
+  currentRelayName.value = displayName || `BrandMeister TG${talkgroup}`
 
   const socket = new WebSocket('wss://api.brandmeister.network/lh/socket.io/?EIO=4&transport=websocket')
   bmSocket.value = socket
   socket.addEventListener('open', () => {
-    if (!isCurrentMonitorRequest(requestId, 'bm')) return
+    if (!isCurrentMonitorRequest(requestId, source)) return
     fmoRefreshing.value = false
   })
   socket.addEventListener('message', (event) => {
-    if (bmSocket.value !== socket || !isCurrentMonitorRequest(requestId, 'bm')) return
-    handleBmPacket(String(event.data || ''), talkgroup)
+    if (bmSocket.value !== socket || !isCurrentMonitorRequest(requestId, source)) return
+    handleBmPacket(String(event.data || ''), talkgroup, displayName)
   })
   socket.addEventListener('error', () => {
-    if (bmSocket.value !== socket || !isCurrentMonitorRequest(requestId, 'bm')) return
+    if (bmSocket.value !== socket || !isCurrentMonitorRequest(requestId, source)) return
     fmoRefreshing.value = false
     fmoStatus.value = i18nText('BM 网络连接失败', 'BM network connection failed')
     showNotice(i18nText('BM 网络连接失败，请稍后重试', 'BM network connection failed. Try again later.'))
   })
   socket.addEventListener('close', () => {
-    if (bmSocket.value !== socket || !isCurrentMonitorRequest(requestId, 'bm')) return
+    if (bmSocket.value !== socket || !isCurrentMonitorRequest(requestId, source)) return
     bmSocket.value = null
     fmoRefreshing.value = false
     fmoStatus.value = i18nText('BM 网络已断开', 'BM network disconnected')
@@ -3041,6 +3186,16 @@ const refreshBrandmeisterCandidates = async () => {
 const refreshNetworkModePlaceholder = () => {
   const source = currentMonitorSource.value
   const target = activeMonitorAddress.value
+  const endpoint = currentNetworkEndpoint.value
+  if (endpoint?.bmTalkgroup) {
+    return refreshBrandmeisterCandidates({
+      talkgroup: endpoint.bmTalkgroup,
+      source: fmoConfig.source,
+      displayName: fmoConfig.source === 'ysf'
+        ? `YSF Direct ${endpoint.label}`
+        : `${source.label} ${endpoint.label}`
+    })
+  }
   closeFmoClient()
   fmoCandidates.value = []
   fmoLogCandidates.value = []
@@ -3053,25 +3208,116 @@ const refreshNetworkModePlaceholder = () => {
     `${sourceName} monitoring placeholder added; adapter pending.`
   )
   showNotice(i18nText(
-    `${source.label} 选项已添加，下一步接入网络监听接口`,
-    `${sourceName} option added; network monitoring adapter is pending.`
+    endpoint
+      ? `${endpoint.label} 暂无已确认的 BM 在线桥接`
+      : `请选择一个 ${source.label} 中国区入口`,
+    endpoint
+      ? `${endpoint.label} has no confirmed BM online bridge.`
+      : `Select a China-region ${sourceName} endpoint.`
   ))
+}
+
+const refreshYsfCandidates = async () => {
+  const endpoint = currentNetworkEndpoint.value
+  if (!endpoint) {
+    showNotice(i18nText('请选择一个 YSF 反射器', 'Select a YSF reflector.'))
+    return
+  }
+  const requestId = nextMonitorRequestId()
+  closeFmoClient()
+  fmoRefreshing.value = true
+  currentRelayName.value = `${endpoint.id} ${endpoint.name}`.trim()
+  fmoStatus.value = i18nText('读取 YSF Reflector Dashboard', 'Reading YSF reflector dashboard')
+  try {
+    const result = await fetchYsfDashboard(endpoint)
+    if (!isCurrentMonitorRequest(requestId, 'ysf')) return
+    fmoCandidates.value = result.rows
+      .map((row, index) => normalizeYsfQso(row, index, result.target))
+      .filter(Boolean)
+      .slice(0, 20)
+    syncControlTxFromTopCandidate()
+    fmoStatus.value = i18nText(
+      `YSF 状态已刷新 · ${endpoint.host}:${endpoint.port}`,
+      `YSF status refreshed · ${endpoint.host}:${endpoint.port}`
+    )
+  } catch (error) {
+    if (!isCurrentMonitorRequest(requestId, 'ysf')) return
+    console.error(error)
+    fmoCandidates.value = []
+    fmoStatus.value = i18nText('该反射器 Dashboard 暂时无法读取', 'Reflector dashboard is unavailable')
+    showNotice(error?.message || i18nText('YSF Dashboard 读取失败', 'Failed to read YSF dashboard.'))
+  } finally {
+    if (isCurrentMonitorRequest(requestId, 'ysf')) fmoRefreshing.value = false
+  }
+}
+
+const refreshDstarCandidates = async () => {
+  const endpoint = currentNetworkEndpoint.value
+  if (!endpoint) {
+    showNotice(i18nText('请选择一个 D-Star反射器模块', 'Select a D-Star reflector module.'))
+    return
+  }
+  const requestId = nextMonitorRequestId()
+  closeFmoClient()
+  fmoRefreshing.value = true
+  currentRelayName.value = `${endpoint.reflector} ${endpoint.module} ${endpoint.name}`.trim()
+  fmoStatus.value = i18nText('读取 D-Star Last Heard', 'Reading D-Star Last Heard')
+  try {
+    const result = await fetchDstarLastHeard(endpoint)
+    if (!isCurrentMonitorRequest(requestId, 'dstar')) return
+    fmoCandidates.value = result.rows
+      .map((row, index) => normalizeDstarQso(row, index, result.target))
+      .filter(Boolean)
+      .slice(0, 20)
+    syncControlTxFromTopCandidate()
+    fmoStatus.value = i18nText(
+      `D-Star 已刷新 · ${result.target}`,
+      `D-Star refreshed · ${result.target}`
+    )
+  } catch (error) {
+    if (!isCurrentMonitorRequest(requestId, 'dstar')) return
+    console.error(error)
+    fmoCandidates.value = []
+    fmoStatus.value = i18nText('D-Star Dashboard 暂时无法读取', 'D-Star dashboard is unavailable')
+    showNotice(error?.message || i18nText('D-Star Last Heard 读取失败', 'Failed to read D-Star Last Heard.'))
+  } finally {
+    if (isCurrentMonitorRequest(requestId, 'dstar')) fmoRefreshing.value = false
+  }
 }
 
 const refreshMonitorCandidates = () => {
   if (fmoConfig.source === 'bm') return refreshBrandmeisterCandidates()
   if (fmoConfig.source === 'mmdvm') return refreshMmdvmCandidates()
   if (fmoConfig.source === 'hambox') return refreshHamboxCandidates()
+  if (fmoConfig.source === 'ysf') return refreshYsfCandidates()
+  if (fmoConfig.source === 'dstar') return refreshDstarCandidates()
+  if (currentMonitorSource.value.addressKind === 'placeholder') {
+    closeFmoClient()
+    fmoCandidates.value = []
+    currentRelayName.value = currentMonitorSource.value.label
+    fmoStatus.value = i18nText('监听功能待开发', 'Monitoring is under development')
+    return
+  }
   if (currentMonitorSource.value.addressKind === 'network') return refreshNetworkModePlaceholder()
   return refreshFmoCandidates()
 }
 
 const startFmoAutoRefresh = () => {
   window.clearInterval(fmoRefreshTimer.value)
+  if (currentMonitorSource.value.addressKind === 'placeholder') {
+    refreshMonitorCandidates()
+    return
+  }
   if (!fmoConfig.autoRefresh || !activeMonitorAddress.value) return
   refreshMonitorCandidates()
-  if (fmoConfig.source === 'bm' || currentMonitorSource.value.addressKind === 'network') return
-  const refreshMs = fmoConfig.source === 'hambox' ? 3000 : fmoConfig.source === 'mmdvm' ? 3000 : 10000
+  if (fmoConfig.source === 'bm' || (currentMonitorSource.value.addressKind === 'network' && !['ysf', 'dstar'].includes(fmoConfig.source))) return
+  const refreshMs = fmoConfig.source === 'hambox' || fmoConfig.source === 'mmdvm'
+    ? 3000
+    : fmoConfig.source === 'ysf'
+      ? 15000
+      : fmoConfig.source === 'dstar'
+        ? 10000
+      : 10000
   fmoRefreshTimer.value = window.setInterval(refreshMonitorCandidates, refreshMs)
 }
 
@@ -3556,9 +3802,18 @@ const createExcelBlob = async () => {
 
 const exportExcel = async () => {
   if (!assertPublicWebAllowed('download-excel')) return
-  const result = await downloadBlob(await createExcelBlob(), getExcelFilename(), { picker: true })
+  const filename = getExcelFilename()
+  const result = await downloadBlob(await createExcelBlob(), filename, { picker: true })
   markPublicDownloadUsed('excel')
-  sendClientMetric('excel-export-local', { localFile: true, silent: false, format: 'excel', registered: hasApprovedProfileAccess.value })
+  saveCheckinToServer({ silent: true }).catch(() => {})
+  sendClientMetric('excel-export-local', {
+    localFile: true,
+    silent: false,
+    format: 'excel',
+    filename,
+    activityName: activityConfig.name || getDefaultActivityName(),
+    registered: hasApprovedProfileAccess.value
+  })
   showNotice(result?.path ? i18nText(`Excel 已保存：${result.path}`, `Excel saved: ${result.path}`) : i18nText('Excel 已导出', 'Excel exported.'))
 }
 
@@ -3571,9 +3826,17 @@ const exportAdif = async () => {
   const blob = new Blob([buildAdifContent()], {
     type: 'application/octet-stream;charset=utf-8'
   })
-  const result = await downloadBlob(blob, getAdifFilename(), { picker: true })
+  const filename = getAdifFilename()
+  const result = await downloadBlob(blob, filename, { picker: true })
   markPublicDownloadUsed('adif')
-  sendClientMetric('adif-export-local', { localFile: true, silent: false, format: 'adif', registered: hasApprovedProfileAccess.value })
+  sendClientMetric('adif-export-local', {
+    localFile: true,
+    silent: false,
+    format: 'adif',
+    filename,
+    activityName: activityConfig.name || getDefaultActivityName(),
+    registered: hasApprovedProfileAccess.value
+  })
   showNotice(result?.path ? i18nText(`ADIF 已保存：${result.path}`, `ADIF saved: ${result.path}`) : i18nText('ADIF 已导出', 'ADIF exported.'))
 }
 
@@ -3617,7 +3880,7 @@ const saveLocalExcelFile = async ({ silent = false, allowPicker = true } = {}) =
 
 const saveCheckinToServer = async ({ silent = false } = {}) => {
   if (!assertPublicWebAllowed('save')) throw new Error(i18nText('网络版测试限制', 'Web test limit reached.'))
-  const response = await fetch(serverApiPath('/api/checkins'), {
+  const response = await fetch(sharedProfileApiPath('/api/checkins'), {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...sharedProfileAuthHeaders() },
     body: JSON.stringify({
@@ -3668,7 +3931,15 @@ const saveExcelFile = async ({ silent = false, allowPicker = true } = {}) => {
     if (!silent && serverSaved && localSaved) showNotice(i18nText('服务器与本地 Excel 已保存', 'Saved to server and local Excel.'))
     else if (!silent && serverSaved) showNotice(i18nText('服务器已保存', 'Saved to server.'))
     else if (!silent && localSaved) showNotice(i18nText('本地 Excel 已保存', 'Local Excel saved.'))
-    if (localSaved) sendClientMetric('excel-export-local', { localFile: true, silent })
+    if (localSaved) {
+      sendClientMetric('excel-export-local', {
+        localFile: true,
+        silent,
+        format: 'excel',
+        filename: getExcelFilename(),
+        activityName: activityConfig.name || getDefaultActivityName()
+      })
+    }
   } catch (error) {
     if (error?.name !== 'AbortError') {
       console.error(error)
@@ -3747,7 +4018,11 @@ const createNewActivity = () => {
   })
   persist()
   persistActivityConfig()
-  sendClientMetric('new-activity', { action: 'new-activity', registered: hasApprovedProfileAccess.value })
+  sendClientMetric('new-activity', {
+    action: 'new-activity',
+    activityName: activityConfig.name || getDefaultActivityName(),
+    registered: hasApprovedProfileAccess.value
+  })
   showNotice(i18nText('已新建空白点名日志', 'New blank check-in log created.'))
 }
 
@@ -3919,7 +4194,8 @@ watch(
         proxyEnabled: isLocalProxyAutoEnabled.value
       })
     }
-    if ((source === 'mmdvm' || source === 'hambox' || source === 'bm') && !fmoConfig.autoRefresh) {
+    if (source === 'ysf' || source === 'dstar') ensureNetworkEndpointSelection()
+    if ((source === 'mmdvm' || source === 'hambox' || source === 'bm' || source === 'ysf' || source === 'dstar') && !fmoConfig.autoRefresh) {
       fmoConfig.autoRefresh = true
       return
     }
@@ -3941,7 +4217,7 @@ watch(
 watch(
   () => hasApprovedProfileAccess.value,
   (approved) => {
-    if (!isPublicWebVersion.value || approved || fmoConfig.source === 'bm') return
+    if (!isPublicWebVersion.value || approved || fmoConfig.source === 'bm' || isBmBackedNetworkSource.value) return
     fmoConfig.source = 'bm'
     showNotice(i18nText('未注册网络版仅支持 BM DMR 监听', 'Trial web version only supports BM DMR monitoring.'), 'top')
   }
@@ -3969,7 +4245,7 @@ watch(
   }
 )
 
-onMounted(() => {
+onMounted(async () => {
   loadPublicSession()
   loadRecords()
   loadProfileSyncConfig()
@@ -3978,6 +4254,7 @@ onMounted(() => {
   enableLocalBaseProfilesForTesting()
   if (!isReadOnlyBaseProfileMode() && profileSyncConfig.enabled) syncSharedProfiles({ silent: true })
   loadFmoConfig()
+  await loadYsfReflectors()
   loadActivityConfig()
   publicSessionTimer.value = window.setInterval(() => {
     if (isPublicWebVersion.value) publicElapsedMs.value = Date.now() - publicSession.startedAt
@@ -4646,14 +4923,12 @@ onUnmounted(() => {
                 <span>{{ t('monitorSource') }}</span>
                 <select
                   :value="fmoConfig.source"
-                  :class="{ 'emphasized-source-select': isPublicWebVersion && fmoConfig.source === 'bm' }"
                   @change="changeMonitorSource"
                 >
                   <option
                     v-for="source in monitorSourceOptions"
                     :key="source.value"
                     :value="source.value"
-                    :class="{ 'emphasized-source-option': isPublicWebVersion && source.emphasized }"
                   >
                     {{ monitorSourceOptionLabel(source) }}
                   </option>
@@ -4707,8 +4982,20 @@ onUnmounted(() => {
                     X
                   </button>
                 </div>
+                <select
+                  v-else-if="networkEndpointOptions.length"
+                  v-model="fmoConfig.networkTarget"
+                >
+                  <option
+                    v-for="endpoint in networkEndpointOptions"
+                    :key="endpoint.value"
+                    :value="endpoint.value"
+                  >
+                    {{ endpoint.label }}
+                  </option>
+                </select>
                 <input
-                  v-else-if="currentMonitorSource.addressKind === 'network'"
+                  v-else-if="currentMonitorSource.addressKind === 'network' || currentMonitorSource.addressKind === 'placeholder'"
                   :value="sourcePlaceholder(currentMonitorSource)"
                   :placeholder="sourcePlaceholder(currentMonitorSource)"
                   readonly
@@ -4760,7 +5047,12 @@ onUnmounted(() => {
             </div>
           </div>
           <div class="fmo-list-wrap">
-            <p v-if="fmoAddressWarning" class="fmo-inline-warning" :title="fmoAddressWarning">
+            <p
+              v-if="fmoAddressWarning"
+              class="fmo-inline-warning"
+              :class="{ 'dashboard-latency-warning': ['ysf', 'dstar'].includes(fmoConfig.source) }"
+              :title="fmoAddressWarning"
+            >
               {{ fmoAddressWarning }}
             </p>
             <table class="fmo-list">

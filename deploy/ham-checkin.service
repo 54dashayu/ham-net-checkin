@@ -9,6 +9,7 @@ Environment=NODE_ENV=production
 Environment=PORT=37173
 Environment=HAM_CHECKIN_DATA_DIR=/var/lib/ham-checkin
 Environment=HAM_CHECKIN_BASE_PATH=/checkin
+Environment=HAM_CHECKIN_NGINX_ACCESS_LOG=/var/log/nginx/fmo.bh1jss.net.access.log
 EnvironmentFile=-/etc/ham-checkin.env
 ExecStart=/usr/local/bin/node /opt/ham-checkin/server/index.mjs
 Restart=always

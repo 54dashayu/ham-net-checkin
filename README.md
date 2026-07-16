@@ -2,11 +2,11 @@
 
 用于业余无线电台网点名活动的记录工具。主控可以现场记录呼号、时间、QTH、设备、天线、功率、频率、模式、信号报告和备注，并导出 Excel / ADIF 文件。
 
-## 当前测试版
+## 当前版本
 
-V1.01.2 完成本地版与公网 VPS 版同步交付：公网 VPS 版提供 BM DMR 基础体验，导入审核密钥后可通过 Chrome / Edge 浏览器插件访问本地 MMDVM / HAMBOX / FMO；本地版继续内置本地设备访问能力。该版本在 V1.01.1 基础上修复常用候选下拉不易点选、填写框和添加记录操作迟钝的问题，并保留备选区 4 卡片流程、最近 6 个候选高亮、MMDVM TS1/TS2 筛选、主控发射提示、重复记录拦截、Excel / ADIF 导出和中英文说明书。
+V1.02 将本地 WebView 版与公网 VPS 版的主要功能统一。本地版继续直接访问局域网 MMDVM、HAMBOX 与 FMO，并新增中国常用 YSF 反射器和 D-Star / XLX 反射器 Dashboard 的 Last Heard 候选列表。YSF 呼号进入备选区时会识别并忽略常见电台型号或自定义后缀，列表仍保留完整显示。P25、NXDN、FCS 暂列于监听源末尾并标记为待开发。
 
-V1.01.2 发布文件位于 `release/v1.01.2/`，仅保留 Win64 安装版、macOS DMG、Chrome / Edge 浏览器插件和校验文件。Win64 安装包建议通过 GitHub Actions / Windows 环境构建。
+V1.02 发布文件位于 `release/v1.02/`，提供轻量 Win64 安装版、已签名并通过 Apple 公证的 macOS DMG 和 SHA-256 校验文件。桌面版采用系统 WebView，不捆绑 Chromium。
 
 ## 当前功能
 
@@ -15,6 +15,9 @@ V1.01.2 发布文件位于 `release/v1.01.2/`，仅保留 Win64 安装版、macO
 - 候选呼号：输入呼号片段时显示历史候选，一键套用历史资料。
 - 常用候选值：QTH、设备、天线输入框支持历史值下拉。
 - FMO 通联候选：添加 FMO 地址后读取正在通联/最近通联的 HAM 呼号、QTH/Grid、设备/备注等候选信息，主控点选抄收清楚的友台后再手动入表。
+- YSF 候选：选择已验证的中国常用 YSF 反射器，读取 Dashboard Last Heard；点击呼号时自动剥离常见设备型号或自定义后缀。
+- D-Star 候选：按 XLX / XRF / DCS 兼容入口及模块筛选 Dashboard Last Heard。
+- 预留监听源：P25、NXDN、FCS 保持“监听功能待开发”状态。
 - 记录管理：搜索、编辑、删除、清空本次记录。
 - 导出：生成 `.xlsx` 与 `.adi` 文件，可用 Excel/WPS 或 ADIF 兼容日志工具打开。
 - 备份：导出/导入本软件 JSON 备份。
