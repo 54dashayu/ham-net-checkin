@@ -1456,8 +1456,8 @@ const publicNetworkWarning = computed(() => {
 const fmoAddressWarning = computed(() =>
   (['ysf', 'dstar'].includes(fmoConfig.source)
       ? i18nText(
-        '通过网络获取 Dashboard 数据，延迟较大！建议使用本地版监听 MMDVM。',
-        'Dashboard data fetched over the network has significant latency! Use the local edition with MMDVM monitoring.'
+        '通过网络获取公开 Dashboard 数据，延迟较大或非实时更新！建议使用本地版监听 MMDVM。',
+        'Public Dashboard data fetched over the network may have significant latency or may not update in real time. Use the local edition with MMDVM monitoring.'
       )
     : '') ||
   publicNetworkWarning.value ||
