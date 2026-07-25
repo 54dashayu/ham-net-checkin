@@ -31,6 +31,7 @@ import {
   normalizeHost
 } from './services/fmoClient'
 import { gridToAddressText, isMaidenheadGrid } from './services/gridAddress'
+import { getExcelColumns } from './services/excelColumns'
 import { fetchHamboxLastHeard } from './services/hamboxClient'
 import { localizeBmQth } from './services/localizedAddress'
 import { fetchMmdvmLastHeard } from './services/mmdvmClient'
@@ -41,6 +42,12 @@ import {
   getYsfDashboardStatus
 } from './services/ysfClient'
 import { fetchDstarLastHeard, getVerifiedChinaDstarRooms } from './services/dstarClient'
+import {
+  assignMissingRecordSerials,
+  getNextRecordSerial,
+  hasRecordSerial,
+  normalizeRecordSerial
+} from './services/recordSerial'
 
 const STORAGE_KEY = 'ham-net-checkin-records-v1'
 const PROFILE_KEY = 'ham-net-checkin-profiles-v1'
@@ -94,7 +101,7 @@ const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || get
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
-const appVersion = 'V1.02'
+const appVersion = 'V1.02.1'
 
 const i18nMessages = {
   zh: {
@@ -108,7 +115,7 @@ const i18nMessages = {
     desktopDownloadChecksum: '下载校验文件',
     recorded: '已记录',
     nextRecord: '下条',
-    setRecordedTitle: '点击设置已记录数量，下一条序号自动 +1',
+    setRecordedTitle: '点击设置下一条记录序号',
     activityName: '台网活动名称',
     controlCallsign: '主控呼号',
     controlQth: '主控 QTH',
@@ -147,6 +154,9 @@ const i18nMessages = {
     searchRecords: '搜索已记录呼号、QTH、设备、备注',
     clearSearch: '清空搜索',
     exportExcel: '导出 Excel',
+    excelColumnsTitle: '选择此次导出的列',
+    excelColumnsHint: '仅影响本次手动导出；自动保存仍会包含全部列。',
+    exportNow: '导出',
     selectAll: '全选',
     cancelSelect: '取消',
     deleteSelected: '删除选中',
@@ -180,12 +190,12 @@ const i18nMessages = {
     controlTx: '主控发射',
     transmitting: '正在发射！',
     waitingControl: '等待监听到主控呼号',
-    setRecordedCount: '设置已记录数量',
-    recordedCount: '已记录数量',
+    setRecordedCount: '设置下一条序号',
+    recordedCount: '下一条序号',
     close: '关闭',
     cancel: '取消',
     saveSetting: '保存设置',
-    serialHint: '保存后，下一条记录序号自动从已记录数量 +1 开始。',
+    serialHint: '可跳过已删除或停用的序号；已有记录不会重新连续编号。',
     sharedProfileRegister: '共享呼号资料库注册',
     registrationCallsign: '注册呼号',
     cracCertificate: 'CRAC 操作证书号',
@@ -242,7 +252,7 @@ const i18nMessages = {
     desktopDownloadChecksum: 'Checksum file',
     recorded: 'Logged',
     nextRecord: 'Next',
-    setRecordedTitle: 'Set logged count; next serial number adds 1',
+    setRecordedTitle: 'Set the next record serial number',
     activityName: 'Net Activity',
     controlCallsign: 'OP Call',
     controlQth: 'OP QTH',
@@ -281,6 +291,9 @@ const i18nMessages = {
     searchRecords: 'Search callsign, QTH, device, notes',
     clearSearch: 'Clear search',
     exportExcel: 'Export Excel',
+    excelColumnsTitle: 'Choose columns for this export',
+    excelColumnsHint: 'Only this manual export is affected. Auto Save keeps every column.',
+    exportNow: 'Export',
     selectAll: 'Select All',
     cancelSelect: 'Cancel',
     deleteSelected: 'Delete selected',
@@ -314,12 +327,12 @@ const i18nMessages = {
     controlTx: 'OP TX',
     transmitting: 'Transmitting!',
     waitingControl: 'Waiting for OP callsign',
-    setRecordedCount: 'Set Logged Count',
-    recordedCount: 'Logged Count',
+    setRecordedCount: 'Set Next Serial',
+    recordedCount: 'Next Serial',
     close: 'Close',
     cancel: 'Cancel',
     saveSetting: 'Save Setting',
-    serialHint: 'After saving, the next serial number starts from logged count + 1.',
+    serialHint: 'Deleted or unused serials may be skipped; existing records are not renumbered.',
     sharedProfileRegister: 'Shared Callsign DB Registration',
     registrationCallsign: 'Registration Callsign',
     cracCertificate: 'CRAC Certificate No.',
@@ -377,15 +390,15 @@ const browserBridgeDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/H
 const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadWin64'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.02-Win64-Setup.exe'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.02.1-Win64-Setup.exe'
   },
   {
     label: t('desktopDownloadMacOS'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.02-macOS.dmg'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.02.1-macOS.dmg'
   },
   {
     label: t('desktopDownloadChecksum'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.02.txt'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.02.1.txt'
   }
 ])
 const sourceFieldLabel = (source) =>
@@ -480,6 +493,12 @@ const systemClock = ref(new Date())
 const systemClockTimer = ref(null)
 const serialEditorOpen = ref(false)
 const serialEditorDraft = ref('')
+const excelColumnSelectorOpen = ref(false)
+const manualExcelColumns = reactive({
+  antenna: true,
+  power: true,
+  mode: true
+})
 const publicSession = reactive({
   startedAt: Date.now(),
   activityId: initialActivityId || 'default',
@@ -560,7 +579,8 @@ const activityConfig = reactive({
   controlDevice: '',
   controlAntenna: '',
   controlPower: '',
-  serialStart: 1
+  serialStart: 1,
+  nextSerial: null
 })
 
 const modeOptions = ['FM', 'SSB', 'CW', 'DMR', 'C4FM', 'D-STAR', 'FT8']
@@ -985,14 +1005,15 @@ const candidateStatusText = (candidate) => {
   return i18nText('首次参与', 'First check-in')
 }
 
-const normalizeSerialStart = (value) => Math.max(1, Number.parseInt(value, 10) || 1)
+const normalizeSerialStart = (value) => normalizeRecordSerial(value) || 1
 const recordSerialStart = computed(() => normalizeSerialStart(activityConfig.serialStart))
-const nextRecordSerial = computed(() => recordSerialStart.value + sortedRecords.value.length)
-const displayedRecordedCount = computed(() => Math.max(0, nextRecordSerial.value - 1))
+const nextRecordSerial = computed(() =>
+  getNextRecordSerial(records.value, activityConfig.nextSerial)
+)
+const displayedRecordedCount = computed(() => records.value.length)
 
 const getDisplaySerial = (record) => {
-  const index = sortedRecords.value.findIndex((item) => item.id === record.id)
-  return index >= 0 ? recordSerialStart.value + index : ''
+  return normalizeRecordSerial(record.serial) || ''
 }
 
 const profileFields = ['qth', 'device', 'antenna', 'power', 'mode', 'signal']
@@ -1622,7 +1643,9 @@ const scheduleDeferredPersist = (key, callback, delay = 140) => {
 const loadRecords = () => {
   try {
     const saved = JSON.parse(localStorage.getItem(scopedKey(STORAGE_KEY)) || '[]')
-    records.value = Array.isArray(saved) ? saved : []
+    records.value = Array.isArray(saved)
+      ? assignMissingRecordSerials(saved, recordSerialStart.value)
+      : []
   } catch {
     records.value = []
   }
@@ -1732,7 +1755,8 @@ const loadActivityConfig = () => {
       controlDevice: saved.controlDevice || '',
       controlAntenna: saved.controlAntenna || '',
       controlPower: saved.controlPower || '',
-      serialStart: normalizeSerialStart(saved.serialStart)
+      serialStart: normalizeSerialStart(saved.serialStart),
+      nextSerial: normalizeRecordSerial(saved.nextSerial)
     })
   } catch {
     /* keep defaults */
@@ -3404,14 +3428,17 @@ const submitRecord = () => {
     )
     showNotice(i18nText('记录已更新', 'Record updated.'))
   } else {
+    const serial = nextRecordSerial.value
     records.value = [
       ...records.value,
       {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
+        serial,
         ...payload
       }
     ]
+    activityConfig.nextSerial = serial + 1
     showNotice(i18nText('已加入点名记录', 'Record added.'))
   }
 
@@ -3521,7 +3548,7 @@ const clearAll = () => {
 }
 
 const openSerialEditor = () => {
-  serialEditorDraft.value = String(displayedRecordedCount.value)
+  serialEditorDraft.value = String(nextRecordSerial.value)
   serialEditorOpen.value = true
 }
 
@@ -3530,19 +3557,23 @@ const closeSerialEditor = () => {
 }
 
 const applySerialEditor = () => {
-  const recordedCount = Number.parseInt(String(serialEditorDraft.value).trim(), 10)
-  if (!Number.isInteger(recordedCount) || recordedCount < 0) {
-    showNotice(i18nText('已记录数量需要填写 0 或正整数', 'Logged count must be 0 or a positive integer.'))
+  const nextSerial = normalizeRecordSerial(String(serialEditorDraft.value).trim())
+  if (!nextSerial) {
+    showNotice(i18nText('下一条序号需要填写正整数', 'Next serial must be a positive integer.'))
     return
   }
-  activityConfig.serialStart = Math.max(1, recordedCount - sortedRecords.value.length + 1)
+  if (hasRecordSerial(records.value, nextSerial)) {
+    showNotice(i18nText('该序号已被现有记录使用', 'That serial is already used by an existing record.'))
+    return
+  }
+  activityConfig.nextSerial = nextSerial
   closeSerialEditor()
   showNotice(i18nText(`下一条记录序号将从 ${nextRecordSerial.value} 开始`, `Next serial number starts from ${nextRecordSerial.value}.`))
 }
 
 const makeRows = () =>
-  sortedRecords.value.map((record, index) => ({
-    序号: recordSerialStart.value + index,
+  sortedRecords.value.map((record) => ({
+    序号: normalizeRecordSerial(record.serial) || '',
     呼号: record.callsign,
     QTH: record.qth,
     设备: record.device,
@@ -3668,7 +3699,7 @@ const buildAdifContent = () => {
   ]
   const stationCallsign = normalizeCallsign(activityConfig.controlCallsign)
   const stationComment = activityConfig.name || getDefaultActivityName()
-  sortedRecords.value.forEach((record, index) => {
+  sortedRecords.value.forEach((record) => {
     const date = getRecordDate(record.time)
     const qsoDate = formatAdifTimestamp(date).slice(0, 8)
     const timeOn = formatAdifTimestamp(date).slice(9)
@@ -3684,7 +3715,7 @@ const buildAdifContent = () => {
       adifField('COMMENT', 'via HAM Net Check-in'),
       adifField('QTH', record.qth),
       adifField('MY_QTH', activityConfig.controlQth),
-      adifField('APP_HAM_CHECKIN_LOGID', String(recordSerialStart.value + index)),
+      adifField('APP_HAM_CHECKIN_LOGID', String(normalizeRecordSerial(record.serial) || '')),
       adifField('APP_HAM_CHECKIN_ACTIVITY', stationComment),
       adifField('APP_HAM_CHECKIN_DEVICE', record.device),
       adifField('APP_HAM_CHECKIN_MY_DEVICE', activityConfig.controlDevice),
@@ -3699,9 +3730,10 @@ const buildAdifContent = () => {
   return `${lines.filter(Boolean).join('\n')}\n`
 }
 
-const buildExcelWorkbook = () => {
+const buildExcelWorkbook = (columnOptions) => {
   const rows = makeRows()
-  const headers = ['序号', '呼号', 'QTH', '设备', '天线', '功率', '方式', '通联时间 (BJT)']
+  const columns = getExcelColumns(columnOptions)
+  const headers = columns.map((column) => column.header)
   const exportTitle = activityConfig.name || getDefaultActivityName()
   const exportTimeRange = getExportTimeRange()
   const controlCallsign = normalizeCallsign(activityConfig.controlCallsign)
@@ -3723,36 +3755,28 @@ const buildExcelWorkbook = () => {
   const worksheet = workbook.addWorksheet('台网日志', {
     views: [{ showGridLines: true }]
   })
-  worksheet.columns = [
-    { key: 'sn', width: 8 },
-    { key: 'callsign', width: 15 },
-    { key: 'qth', width: 25 },
-    { key: 'device', width: 24 },
-    { key: 'antenna', width: 16 },
-    { key: 'power', width: 8 },
-    { key: 'mode', width: 11 },
-    { key: 'time', width: 18 }
-  ]
-  worksheet.mergeCells('A1:H1')
-  worksheet.mergeCells('A2:H2')
+  worksheet.columns = columns.map(({ key, width }) => ({ key, width }))
+  worksheet.mergeCells(1, 1, 1, columns.length)
+  worksheet.mergeCells(2, 1, 2, columns.length)
   worksheet.getCell('A1').value = exportTitle
   worksheet.getCell('A2').value = controlLine
   worksheet.addRow(headers)
-  worksheet.addRow([
-    '主控',
-    controlCallsign,
-    activityConfig.controlQth,
-    activityConfig.controlDevice,
-    activityConfig.controlAntenna,
-    controlPower,
-    '',
-    exportTimeRange
-  ])
+  const controlValues = {
+    sn: '主控',
+    callsign: controlCallsign,
+    qth: activityConfig.controlQth,
+    device: activityConfig.controlDevice,
+    antenna: activityConfig.controlAntenna,
+    power: controlPower,
+    mode: '',
+    time: exportTimeRange
+  }
+  worksheet.addRow(columns.map((column) => controlValues[column.key] || ''))
   rows.forEach((row) => {
     worksheet.addRow(headers.map((header) => row[header] || ''))
   })
   worksheet.addRow(['本日志由 HAM台网点名主控台 自动生成，技术支持BH1JSS'])
-  worksheet.mergeCells(`A${worksheet.rowCount}:H${worksheet.rowCount}`)
+  worksheet.mergeCells(worksheet.rowCount, 1, worksheet.rowCount, columns.length)
 
   const thinBorder = { style: 'thin', color: { argb: 'FF000000' } }
   worksheet.eachRow((row, rowNumber) => {
@@ -3793,17 +3817,17 @@ const buildExcelWorkbook = () => {
   return workbook
 }
 
-const createExcelBlob = async () => {
-  const buffer = await buildExcelWorkbook().xlsx.writeBuffer()
+const createExcelBlob = async (columnOptions) => {
+  const buffer = await buildExcelWorkbook(columnOptions).xlsx.writeBuffer()
   return new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   })
 }
 
-const exportExcel = async () => {
+const exportExcel = async (columnOptions) => {
   if (!assertPublicWebAllowed('download-excel')) return
   const filename = getExcelFilename()
-  const result = await downloadBlob(await createExcelBlob(), filename, { picker: true })
+  const result = await downloadBlob(await createExcelBlob(columnOptions), filename, { picker: true })
   markPublicDownloadUsed('excel')
   saveCheckinToServer({ silent: true }).catch(() => {})
   sendClientMetric('excel-export-local', {
@@ -3815,6 +3839,24 @@ const exportExcel = async () => {
     registered: hasApprovedProfileAccess.value
   })
   showNotice(result?.path ? i18nText(`Excel 已保存：${result.path}`, `Excel saved: ${result.path}`) : i18nText('Excel 已导出', 'Excel exported.'))
+}
+
+const openExcelColumnSelector = () => {
+  Object.assign(manualExcelColumns, {
+    antenna: true,
+    power: true,
+    mode: true
+  })
+  excelColumnSelectorOpen.value = true
+}
+
+const closeExcelColumnSelector = () => {
+  excelColumnSelectorOpen.value = false
+}
+
+const confirmManualExcelExport = async () => {
+  closeExcelColumnSelector()
+  await exportExcel({ ...manualExcelColumns })
 }
 
 const exportAdif = async () => {
@@ -4014,7 +4056,8 @@ const createNewActivity = () => {
   Object.assign(activityConfig, {
     ...activityConfig,
     name: getDefaultActivityName(),
-    serialStart: 1
+    serialStart: 1,
+    nextSerial: null
   })
   persist()
   persistActivityConfig()
@@ -4053,7 +4096,11 @@ const importJson = async (event) => {
       createdAt: record.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }))
-    records.value = normalized.filter((record) => record.callsign)
+    records.value = assignMissingRecordSerials(
+      normalized.filter((record) => record.callsign),
+      recordSerialStart.value
+    )
+    activityConfig.nextSerial = null
     mergeProfiles(records.value.map((record) => ({ ...record, lastCheckinAt: record.time })))
     markProfileDirty(records.value.map((record) => record.callsign))
     scheduleSharedProfileSync()
@@ -4247,6 +4294,7 @@ watch(
 
 onMounted(async () => {
   loadPublicSession()
+  loadActivityConfig()
   loadRecords()
   loadProfileSyncConfig()
   loadDirtyProfiles()
@@ -4255,7 +4303,6 @@ onMounted(async () => {
   if (!isReadOnlyBaseProfileMode() && profileSyncConfig.enabled) syncSharedProfiles({ silent: true })
   loadFmoConfig()
   await loadYsfReflectors()
-  loadActivityConfig()
   publicSessionTimer.value = window.setInterval(() => {
     if (isPublicWebVersion.value) publicElapsedMs.value = Date.now() - publicSession.startedAt
   }, 1000)
@@ -4814,7 +4861,7 @@ onUnmounted(() => {
               </button>
             </label>
             <div class="toolbar-actions">
-              <button type="button" class="tool-button" :title="t('exportExcel')" @click="exportExcel">
+              <button type="button" class="tool-button" :title="t('exportExcel')" @click="openExcelColumnSelector">
                 <FileSpreadsheet :size="18" />
                 <span>Excel</span>
               </button>
@@ -5131,6 +5178,29 @@ onUnmounted(() => {
         <div class="serial-modal-actions">
           <button type="button" class="tool-button" @click="closeSerialEditor">{{ t('cancel') }}</button>
           <button type="submit" class="primary-action">{{ t('saveSetting') }}</button>
+        </div>
+      </form>
+    </div>
+
+    <div
+      v-if="excelColumnSelectorOpen"
+      class="modal-backdrop"
+      @click.self="closeExcelColumnSelector"
+    >
+      <form class="serial-modal excel-column-modal" @submit.prevent="confirmManualExcelExport">
+        <div class="modal-head">
+          <h2>{{ t('excelColumnsTitle') }}</h2>
+          <button type="button" class="icon-button" :title="t('close')" @click="closeExcelColumnSelector">X</button>
+        </div>
+        <div class="excel-column-options">
+          <label><input v-model="manualExcelColumns.antenna" type="checkbox" /> {{ t('antenna') }}</label>
+          <label><input v-model="manualExcelColumns.power" type="checkbox" /> {{ t('power') }}</label>
+          <label><input v-model="manualExcelColumns.mode" type="checkbox" /> {{ t('mode') }}</label>
+        </div>
+        <p class="modal-hint">{{ t('excelColumnsHint') }}</p>
+        <div class="serial-modal-actions">
+          <button type="button" class="tool-button" @click="closeExcelColumnSelector">{{ t('cancel') }}</button>
+          <button type="submit" class="primary-action">{{ t('exportNow') }}</button>
         </div>
       </form>
     </div>

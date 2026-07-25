@@ -954,6 +954,33 @@ h2 {
   grid-template-columns: 90px minmax(0, 1fr);
 }
 
+.excel-column-modal input {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.excel-column-options {
+  display: grid;
+  gap: 8px;
+}
+
+.excel-column-options label {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  font-weight: 800;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.excel-column-options input {
+  height: 18px;
+  width: 18px;
+}
+
 .profile-registration-modal .modal-head {
   align-items: center;
   display: flex;

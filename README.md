@@ -4,9 +4,9 @@
 
 ## 当前版本
 
-V1.02 将本地 WebView 版与公网 VPS 版的主要功能统一。本地版继续直接访问局域网 MMDVM、HAMBOX 与 FMO，并新增中国常用 YSF 反射器和 D-Star / XLX 反射器 Dashboard 的 Last Heard 候选列表。YSF 呼号进入备选区时会识别并忽略常见电台型号或自定义后缀，列表仍保留完整显示。P25、NXDN、FCS 暂列于监听源末尾并标记为待开发。
+V1.02.1 在 V1.02 WebView / VPS 功能基线上修复记录序号模型：记录可保留空缺并从指定的下一条序号继续，删除记录不会重新连续编号。工具栏手动 Excel 导出新增“天线、功率、模式”三列选择；自动保存仍保留全部列。
 
-V1.02 发布文件位于 `release/v1.02/`，提供轻量 Win64 安装版、已签名并通过 Apple 公证的 macOS DMG 和 SHA-256 校验文件。桌面版采用系统 WebView，不捆绑 Chromium。
+V1.02.1 发布提供轻量 Win64 安装版、已签名并通过 Apple 公证的 macOS DMG 和 SHA-256 校验文件。桌面版采用系统 WebView，不捆绑 Chromium。V1.02 保留为回退版本。
 
 ## 当前功能
 

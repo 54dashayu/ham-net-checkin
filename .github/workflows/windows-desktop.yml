@@ -35,7 +35,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path release\windows-win64 | Out-Null
           $version = node -p "require('./package.json').version"
-          $displayVersion = "1.02"
+          $displayVersion = "1.02.1"
           $nsis = Get-ChildItem -Path src-tauri\target\release\bundle\nsis -Filter *.exe -File | Select-Object -First 1
           if (-not $nsis) {
             throw "Win64 NSIS installer was not generated."

@@ -707,9 +707,11 @@ async function createExcelBuffer(activity, records) {
     '',
     exportTimeRange
   ])
+  const serialStart = Math.max(1, Number.parseInt(activity.serialStart, 10) || 1)
   sortedRecords.forEach((record, index) => {
+    const storedSerial = Number(record.serial)
     worksheet.addRow([
-      index + 1,
+      Number.isInteger(storedSerial) && storedSerial > 0 ? storedSerial : serialStart + index,
       record.callsign || '',
       record.qth || '',
       record.device || '',

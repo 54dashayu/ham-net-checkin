@@ -1,11 +1,12 @@
 {
   "name": "ham-net-checkin",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "productName": "HAM 台网点名主控台",
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
+    "test": "node --test",
     "dev": "vite",
     "build": "vite build",
     "postbuild": "node scripts/copy-base-profiles.mjs",
@@ -59,7 +60,7 @@
       ]
     },
     "nsis": {
-      "artifactName": "HAM-Checkin-1.02-Win64-Setup.${ext}",
+      "artifactName": "HAM-Checkin-1.02.1-Win64-Setup.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
@@ -73,7 +74,7 @@
       "category": "public.app-category.utilities",
       "hardenedRuntime": true,
       "notarize": true,
-      "artifactName": "HAM-Checkin-1.02-macOS.${ext}",
+      "artifactName": "HAM-Checkin-1.02.1-macOS.${ext}",
       "extendInfo": {
         "NSLocalNetworkUsageDescription": "HAM 台网点名主控台需要访问局域网内的 MMDVM、HAMBOX 和 FMO 设备，用于读取 Last Heard 与实时点名数据。",
         "NSAppTransportSecurity": {
