@@ -390,14 +390,26 @@ const browserBridgeDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/H
 const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadWin64'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.02.1-Win64-Setup.exe'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.03-Win64-Setup.exe'
   },
   {
     label: t('desktopDownloadMacOS'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.02.1-macOS.dmg'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.03-macOS.dmg'
   },
   {
     label: t('desktopDownloadChecksum'),
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.03.txt'
+  },
+  {
+    label: i18nText('V1.02.1 Win64 回退版', 'V1.02.1 Win64 fallback'),
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.02.1-Win64-Setup.exe'
+  },
+  {
+    label: i18nText('V1.02.1 macOS 回退版', 'V1.02.1 macOS fallback'),
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.02.1-macOS.dmg'
+  },
+  {
+    label: i18nText('V1.02.1 回退版校验文件', 'V1.02.1 fallback checksums'),
     href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.02.1.txt'
   }
 ])
