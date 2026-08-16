@@ -938,6 +938,34 @@ const profileByCallsign = computed(() => {
   return map
 })
 
+const profileLookupIndex = computed(() => {
+  const profilesByCoreCallsign = new Map()
+  const historicalCountByCoreCallsign = new Map()
+
+  profileByCallsign.value.forEach((profile) => {
+    const coreCallsign = getCoreCallsign(profile.callsign)
+    if (!coreCallsign) return
+    const matchingProfiles = profilesByCoreCallsign.get(coreCallsign) || []
+    matchingProfiles.push(profile)
+    profilesByCoreCallsign.set(coreCallsign, matchingProfiles)
+  })
+
+  profiles.value.forEach((profile) => {
+    const normalized = normalizeProfile(profile)
+    const coreCallsign = getCoreCallsign(normalized.callsign)
+    if (!coreCallsign) return
+    historicalCountByCoreCallsign.set(
+      coreCallsign,
+      Math.max(
+        historicalCountByCoreCallsign.get(coreCallsign) || 0,
+        Number(normalized.checkinCount || 0)
+      )
+    )
+  })
+
+  return { profilesByCoreCallsign, historicalCountByCoreCallsign }
+})
+
 const currentProfile = computed(() => {
   const exactCallsign = buildRecordCallsign()
   const plainCallsign = normalizeCallsign(form.callsign)
@@ -947,9 +975,7 @@ const currentProfile = computed(() => {
     profileByCallsign.value.get(plainCallsign)
   if (!coreCallsign) return exactProfile || null
 
-  const matchingProfiles = [...profileByCallsign.value.values()].filter((profile) =>
-    isSameCoreCallsign(profile.callsign, coreCallsign)
-  )
+  const matchingProfiles = profileLookupIndex.value.profilesByCoreCallsign.get(coreCallsign) || []
   const orderedProfiles = [
     exactProfile,
     ...matchingProfiles.filter((profile) => profile.callsign !== exactProfile?.callsign)
@@ -988,10 +1014,7 @@ const getSessionRecordCountForCallsign = (callsign, excludingId = '') => {
 const getHistoricalCountForCallsign = (callsign) => {
   const coreCallsign = getCoreCallsign(callsign)
   if (!coreCallsign) return 0
-  const profilesForCallsign = profiles.value.map(normalizeProfile).filter((profile) =>
-    isSameCoreCallsign(profile.callsign, coreCallsign)
-  )
-  return Math.max(0, ...profilesForCallsign.map((profile) => Number(profile.checkinCount || 0)))
+  return profileLookupIndex.value.historicalCountByCoreCallsign.get(coreCallsign) || 0
 }
 
 const candidateStatusText = (candidate) => {
