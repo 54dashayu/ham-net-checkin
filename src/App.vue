@@ -101,7 +101,7 @@ const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || get
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
-const appVersion = 'V1.02.1'
+const appVersion = 'V1.03'
 
 const i18nMessages = {
   zh: {
@@ -938,9 +938,8 @@ const profileByCallsign = computed(() => {
   return map
 })
 
-const profileLookupIndex = computed(() => {
+const profilesByCoreCallsign = computed(() => {
   const profilesByCoreCallsign = new Map()
-  const historicalCountByCoreCallsign = new Map()
 
   profileByCallsign.value.forEach((profile) => {
     const coreCallsign = getCoreCallsign(profile.callsign)
@@ -950,20 +949,7 @@ const profileLookupIndex = computed(() => {
     profilesByCoreCallsign.set(coreCallsign, matchingProfiles)
   })
 
-  profiles.value.forEach((profile) => {
-    const normalized = normalizeProfile(profile)
-    const coreCallsign = getCoreCallsign(normalized.callsign)
-    if (!coreCallsign) return
-    historicalCountByCoreCallsign.set(
-      coreCallsign,
-      Math.max(
-        historicalCountByCoreCallsign.get(coreCallsign) || 0,
-        Number(normalized.checkinCount || 0)
-      )
-    )
-  })
-
-  return { profilesByCoreCallsign, historicalCountByCoreCallsign }
+  return profilesByCoreCallsign
 })
 
 const currentProfile = computed(() => {
@@ -975,7 +961,7 @@ const currentProfile = computed(() => {
     profileByCallsign.value.get(plainCallsign)
   if (!coreCallsign) return exactProfile || null
 
-  const matchingProfiles = profileLookupIndex.value.profilesByCoreCallsign.get(coreCallsign) || []
+  const matchingProfiles = profilesByCoreCallsign.value.get(coreCallsign) || []
   const orderedProfiles = [
     exactProfile,
     ...matchingProfiles.filter((profile) => profile.callsign !== exactProfile?.callsign)
@@ -1011,21 +997,12 @@ const getSessionRecordCountForCallsign = (callsign, excludingId = '') => {
   ).length
 }
 
-const getHistoricalCountForCallsign = (callsign) => {
-  const coreCallsign = getCoreCallsign(callsign)
-  if (!coreCallsign) return 0
-  return profileLookupIndex.value.historicalCountByCoreCallsign.get(coreCallsign) || 0
-}
-
 const candidateStatusText = (candidate) => {
   const callsign = candidate?.callsign || ''
   if (!callsign) return ''
   const sessionCount = getSessionRecordCountForCallsign(callsign)
-  const historicalCount = getHistoricalCountForCallsign(callsign)
-  if (sessionCount && historicalCount) return i18nText(`本次已记录 · 历史 x${historicalCount}`, `Logged now · History x${historicalCount}`)
   if (sessionCount) return i18nText('本次已记录', 'Logged now')
-  if (historicalCount) return i18nText(`历史 x${historicalCount}`, `History x${historicalCount}`)
-  return i18nText('首次参与', 'First check-in')
+  return i18nText('待录入 · 双击后查询资料', 'Queued · Profile loads on double-click')
 }
 
 const normalizeSerialStart = (value) => normalizeRecordSerial(value) || 1
