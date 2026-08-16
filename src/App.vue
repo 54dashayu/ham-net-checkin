@@ -997,14 +997,6 @@ const getSessionRecordCountForCallsign = (callsign, excludingId = '') => {
   ).length
 }
 
-const candidateStatusText = (candidate) => {
-  const callsign = candidate?.callsign || ''
-  if (!callsign) return ''
-  const sessionCount = getSessionRecordCountForCallsign(callsign)
-  if (sessionCount) return i18nText('本次已记录', 'Logged now')
-  return i18nText('待录入 · 双击后查询资料', 'Queued · Profile loads on double-click')
-}
-
 const normalizeSerialStart = (value) => normalizeRecordSerial(value) || 1
 const recordSerialStart = computed(() => normalizeSerialStart(activityConfig.serialStart))
 const nextRecordSerial = computed(() =>
@@ -4571,7 +4563,7 @@ onUnmounted(() => {
           >
             <strong>{{ candidate.callsign }}</strong>
             <span>{{ candidate.qth || candidate.grid || '-' }}</span>
-            <small>{{ candidateStatusText(candidate) }}</small>
+            <small v-if="getSessionRecordCountForCallsign(candidate.callsign)">{{ i18nText('本次已记录', 'Logged now') }}</small>
             <em class="inline-featured-tooltip">{{ i18nText('双击卡片录入', 'Double-click card to enter') }}</em>
             <button
               type="button"
