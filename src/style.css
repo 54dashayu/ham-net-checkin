@@ -192,14 +192,15 @@ h2 {
   box-shadow: inset 0 0 0 1px rgba(0, 140, 42, 0.12);
 }
 
-.record-counter span {
+.record-counter .recorded-count {
   color: var(--muted);
   display: block;
   font-size: 12px;
-  line-height: 1.1;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
-.record-counter strong {
+.record-counter .next-record-serial {
   color: var(--green);
   display: block;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
@@ -214,7 +215,7 @@ h2 {
   font-style: normal;
   font-weight: 800;
   line-height: 1.1;
-  margin-top: 2px;
+  margin-top: 3px;
   white-space: nowrap;
 }
 
@@ -527,6 +528,13 @@ h2 {
   right: 0;
   top: 100%;
   z-index: 80;
+}
+
+.autocomplete-menu.open-upward {
+  bottom: 100%;
+  margin-bottom: 4px;
+  margin-top: 0;
+  top: auto;
 }
 
 .autocomplete-menu li {
@@ -861,7 +869,7 @@ h2 {
   align-items: end;
   display: grid;
   gap: 7px;
-  grid-template-columns: minmax(120px, 0.42fr) minmax(0, 1fr) 130px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 130px;
 }
 
 .entry-sync-row {
@@ -1387,6 +1395,35 @@ tbody tr:nth-child(even) {
 
 .select-col {
   width: 32px;
+}
+
+.drag-col {
+  width: 26px;
+}
+
+.drag-cell {
+  padding-left: 2px;
+  padding-right: 2px;
+  text-align: center;
+}
+
+.drag-handle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: grab;
+  display: inline-flex;
+  justify-content: center;
+  padding: 3px 1px;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.log-table tr.drag-target td {
+  border-top: 2px solid var(--blue);
 }
 
 .log-table th:last-child,

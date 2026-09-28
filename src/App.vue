@@ -5,6 +5,7 @@ import {
   Download,
   FileSpreadsheet,
   FilePlus2,
+  GripVertical,
   Info,
   Languages,
   Pencil,
@@ -45,8 +46,8 @@ import { fetchDstarLastHeard, getVerifiedChinaDstarRooms } from './services/dsta
 import {
   assignMissingRecordSerials,
   getNextRecordSerial,
-  hasRecordSerial,
-  normalizeRecordSerial
+  normalizeRecordSerial,
+  reorderRecordSequence
 } from './services/recordSerial'
 
 const STORAGE_KEY = 'ham-net-checkin-records-v1'
@@ -101,7 +102,7 @@ const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || get
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
-const appVersion = 'V1.03'
+const appVersion = 'V1.04'
 
 const i18nMessages = {
   zh: {
@@ -114,8 +115,8 @@ const i18nMessages = {
     desktopDownloadBrowserBridge: '浏览器插件',
     desktopDownloadChecksum: '下载校验文件',
     recorded: '已记录',
-    nextRecord: '下条',
-    setRecordedTitle: '点击设置下一条记录序号',
+    nextRecord: '当前序号',
+    setRecordedTitle: '点击设置已记录条数',
     activityName: '台网活动名称',
     controlCallsign: '主控呼号',
     controlQth: '主控 QTH',
@@ -190,12 +191,12 @@ const i18nMessages = {
     controlTx: '主控发射',
     transmitting: '正在发射！',
     waitingControl: '等待监听到主控呼号',
-    setRecordedCount: '设置下一条序号',
-    recordedCount: '下一条序号',
+    setRecordedCount: '设置已记录条数',
+    recordedCount: '已记录多少条',
     close: '关闭',
     cancel: '取消',
     saveSetting: '保存设置',
-    serialHint: '可跳过已删除或停用的序号；已有记录不会重新连续编号。',
+    serialHint: '保存后，当前序号会自动从已记录条数的下一条开始；已有记录不会重新编号。',
     sharedProfileRegister: '共享呼号资料库注册',
     registrationCallsign: '注册呼号',
     cracCertificate: 'CRAC 操作证书号',
@@ -251,8 +252,8 @@ const i18nMessages = {
     desktopDownloadBrowserBridge: 'Browser extension',
     desktopDownloadChecksum: 'Checksum file',
     recorded: 'Logged',
-    nextRecord: 'Next',
-    setRecordedTitle: 'Set the next record serial number',
+    nextRecord: 'Current serial',
+    setRecordedTitle: 'Set the number of logged records',
     activityName: 'Net Activity',
     controlCallsign: 'OP Call',
     controlQth: 'OP QTH',
@@ -327,12 +328,12 @@ const i18nMessages = {
     controlTx: 'OP TX',
     transmitting: 'Transmitting!',
     waitingControl: 'Waiting for OP callsign',
-    setRecordedCount: 'Set Next Serial',
-    recordedCount: 'Next Serial',
+    setRecordedCount: 'Set Logged Count',
+    recordedCount: 'Number already logged',
     close: 'Close',
     cancel: 'Cancel',
     saveSetting: 'Save Setting',
-    serialHint: 'Deleted or unused serials may be skipped; existing records are not renumbered.',
+    serialHint: 'After saving, the current serial automatically starts at the next number; existing records are not renumbered.',
     sharedProfileRegister: 'Shared Callsign DB Registration',
     registrationCallsign: 'Registration Callsign',
     cracCertificate: 'CRAC Certificate No.',
@@ -384,21 +385,21 @@ const language = ref(localStorage.getItem(LANGUAGE_KEY) === 'en' ? 'en' : 'zh')
 const t = (key) => i18nMessages[language.value]?.[key] ?? i18nMessages.zh[key] ?? key
 const i18nText = (zh, en) => (language.value === 'en' ? en : zh)
 const userManualUrl = computed(() =>
-  `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v1.01.2-user-manual-en.html' : 'ham-checkin-v1.01.2-user-manual.html'}`
+  `${serverBasePath}/${language.value === 'en' ? 'ham-checkin-v1.04-user-manual-en.html' : 'ham-checkin-v1.04-user-manual.html'}`
 )
 const browserBridgeDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.01.2-Browser-Bridge.zip'
 const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadWin64'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.03-Win64-Setup.exe'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.04-Win64-Setup.exe'
   },
   {
     label: t('desktopDownloadMacOS'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.03-macOS.dmg'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.04-macOS.dmg'
   },
   {
     label: t('desktopDownloadChecksum'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.03.txt'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.04.txt'
   },
   {
     label: i18nText('V1.02.1 Win64 回退版', 'V1.02.1 Win64 fallback'),
@@ -466,9 +467,9 @@ const emptyForm = () => ({
   time: nowForInput(),
   qth: '',
   device: '',
-  antenna: '',
-  power: '',
-  mode: 'FM',
+  antenna: '原装',
+  power: 'L',
+  mode: '',
   signal: '59',
   remarks: ''
 })
@@ -480,6 +481,8 @@ const form = reactive(emptyForm())
 const editingId = ref(null)
 const searchText = ref('')
 const selectedRecordIds = ref([])
+const draggedRecordId = ref('')
+const dragOverRecordId = ref('')
 const recordEditorOpen = ref(false)
 const editingRecordId = ref('')
 const editDraft = reactive(emptyForm())
@@ -596,6 +599,7 @@ const activityConfig = reactive({
 })
 
 const modeOptions = ['FM', 'SSB', 'CW', 'DMR', 'C4FM', 'D-STAR', 'FT8']
+const antennaOptions = ['原装', '车载', 'GP', '八木']
 const quickPowerOptions = ['5W', '10W', '25W', '50W']
 const FIRST_TIME_REMARK = '首次参与'
 const mmdvmTimeslotOptions = ['all', 'TS1', 'TS2']
@@ -877,11 +881,17 @@ const extractDeviceFromComment = (comment) => {
 }
 
 const sortedRecords = computed(() =>
-  [...records.value].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+  [...records.value].sort((a, b) => {
+    const serialDifference = (normalizeRecordSerial(a.serial) || 0) - (normalizeRecordSerial(b.serial) || 0)
+    if (serialDifference) return serialDifference
+    return new Date(a.time).getTime() - new Date(b.time).getTime()
+  })
 )
 
 const displayRecords = computed(() =>
   [...records.value].sort((a, b) => {
+    const serialDifference = (normalizeRecordSerial(b.serial) || 0) - (normalizeRecordSerial(a.serial) || 0)
+    if (serialDifference) return serialDifference
     const aTime = new Date(a.createdAt || a.time || 0).getTime()
     const bTime = new Date(b.createdAt || b.time || 0).getTime()
     return bTime - aTime
@@ -1014,7 +1024,9 @@ const recordSerialStart = computed(() => normalizeSerialStart(activityConfig.ser
 const nextRecordSerial = computed(() =>
   getNextRecordSerial(records.value, activityConfig.nextSerial)
 )
-const displayedRecordedCount = computed(() => records.value.length)
+const displayedRecordedCount = computed(() =>
+  Math.max(records.value.length, nextRecordSerial.value - 1)
+)
 
 const getDisplaySerial = (record) => {
   return normalizeRecordSerial(record.serial) || ''
@@ -1132,10 +1144,21 @@ const isAutocompleteOpen = (targetName, key) =>
 const autocompleteOptions = (targetName, key) => {
   if (!isAutocompleteOpen(targetName, key)) return []
   const target = autocompleteTarget(targetName)
-  const values = key === 'mode'
-    ? uniqueRecentValues([...getSearchableKnownValues(key, target), ...modeOptions], 24)
-    : getSearchableKnownValues(key, target)
   const current = String(target[key] || '').trim()
+  const keyword = key === 'antenna' && current === '原装' ? '' : current
+  const searchableTarget = keyword === current ? target : { ...target, [key]: keyword }
+  const builtInValues = key === 'mode'
+    ? modeOptions
+    : key === 'antenna'
+      ? antennaOptions
+      : []
+  const matchingBuiltInValues = filterValuesByInput(builtInValues, keyword, 24)
+  const values = builtInValues.length
+    ? uniqueRecentValues(
+        [...getSearchableKnownValues(key, searchableTarget), ...matchingBuiltInValues],
+        24
+      )
+    : getSearchableKnownValues(key, searchableTarget)
   return values.filter((value) => value && value !== current).slice(0, 12)
 }
 
@@ -1840,9 +1863,9 @@ const chooseFmoCandidate = (candidate) => {
   form.callsign = callsign
   form.qth = ''
   form.device = ''
-  form.antenna = ''
-  form.power = ''
-  form.mode = 'FM'
+  form.antenna = '原装'
+  form.power = 'L'
+  form.mode = ''
   form.signal = '59'
   form.remarks = ''
 
@@ -3542,6 +3565,43 @@ const removeSelectedRecords = () => {
   showNotice(i18nText('已删除选中记录', 'Selected records deleted.'))
 }
 
+const finishRecordDrag = () => {
+  draggedRecordId.value = ''
+  dragOverRecordId.value = ''
+}
+
+const startRecordDrag = (event, record) => {
+  draggedRecordId.value = record.id
+  dragOverRecordId.value = ''
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('text/plain', record.id)
+}
+
+const markRecordDragTarget = (record) => {
+  if (draggedRecordId.value && draggedRecordId.value !== record.id) {
+    dragOverRecordId.value = record.id
+  }
+}
+
+const dropRecordAt = (record) => {
+  if (!draggedRecordId.value || draggedRecordId.value === record.id) {
+    finishRecordDrag()
+    return
+  }
+  records.value = reorderRecordSequence(
+    displayRecords.value,
+    draggedRecordId.value,
+    record.id,
+    nextRecordSerial.value - 1
+  )
+  activityConfig.nextSerial = Math.max(
+    ...records.value.map((item) => normalizeRecordSerial(item.serial) || 0),
+    0
+  ) + 1
+  finishRecordDrag()
+  showNotice(i18nText('记录顺序和序号已更新', 'Record order and serials updated.'))
+}
+
 const clearAll = () => {
   if (!records.value.length) return
   const confirmed = window.confirm(i18nText('确认清空本次点名记录？建议先导出 Excel 或 JSON 备份。', 'Clear all records in this check-in? Export Excel or JSON first if needed.'))
@@ -3552,7 +3612,7 @@ const clearAll = () => {
 }
 
 const openSerialEditor = () => {
-  serialEditorDraft.value = String(nextRecordSerial.value)
+  serialEditorDraft.value = String(displayedRecordedCount.value)
   serialEditorOpen.value = true
 }
 
@@ -3561,18 +3621,22 @@ const closeSerialEditor = () => {
 }
 
 const applySerialEditor = () => {
-  const nextSerial = normalizeRecordSerial(String(serialEditorDraft.value).trim())
-  if (!nextSerial) {
-    showNotice(i18nText('下一条序号需要填写正整数', 'Next serial must be a positive integer.'))
+  const recordedCount = Number(String(serialEditorDraft.value).trim())
+  if (!Number.isInteger(recordedCount) || recordedCount < 0) {
+    showNotice(i18nText('已记录条数需要填写非负整数', 'Logged count must be a non-negative integer.'))
     return
   }
-  if (hasRecordSerial(records.value, nextSerial)) {
-    showNotice(i18nText('该序号已被现有记录使用', 'That serial is already used by an existing record.'))
-    return
-  }
+  const highestExistingSerial = records.value.reduce(
+    (highest, record) => Math.max(highest, normalizeRecordSerial(record.serial) || 0),
+    0
+  )
+  const nextSerial = Math.max(recordedCount, highestExistingSerial) + 1
   activityConfig.nextSerial = nextSerial
   closeSerialEditor()
-  showNotice(i18nText(`下一条记录序号将从 ${nextRecordSerial.value} 开始`, `Next serial number starts from ${nextRecordSerial.value}.`))
+  showNotice(i18nText(
+    `已记录 ${nextRecordSerial.value - 1} 条，当前序号从 ${nextRecordSerial.value} 开始`,
+    `${nextRecordSerial.value - 1} logged; current serial starts at ${nextRecordSerial.value}.`
+  ))
 }
 
 const makeRows = () =>
@@ -4376,9 +4440,9 @@ onUnmounted(() => {
         :title="t('setRecordedTitle')"
         @click="openSerialEditor"
       >
-        <span>{{ t('recorded') }}</span>
-        <strong>{{ displayedRecordedCount }}</strong>
-        <em>{{ t('nextRecord') }} {{ nextRecordSerial }}</em>
+        <span class="recorded-count">{{ t('recorded') }} {{ displayedRecordedCount }}</span>
+        <em>{{ t('nextRecord') }}</em>
+        <strong class="next-record-serial">{{ nextRecordSerial }}</strong>
       </button>
 
       <div class="activity-fields">
@@ -4697,7 +4761,7 @@ onUnmounted(() => {
                 <ul
                   v-if="autocompleteOptions('form', 'mode').length"
                   :id="autocompleteLabelId('form', 'mode')"
-                  class="autocomplete-menu"
+                  class="autocomplete-menu open-upward"
                 >
                   <li
                     v-for="(value, index) in autocompleteOptions('form', 'mode')"
@@ -4735,7 +4799,7 @@ onUnmounted(() => {
                 <ul
                   v-if="autocompleteOptions('form', 'power').length"
                   :id="autocompleteLabelId('form', 'power')"
-                  class="autocomplete-menu"
+                  class="autocomplete-menu open-upward"
                 >
                   <li
                     v-for="(value, index) in autocompleteOptions('form', 'power')"
@@ -4773,7 +4837,7 @@ onUnmounted(() => {
                 <ul
                   v-if="autocompleteOptions('form', 'signal').length"
                   :id="autocompleteLabelId('form', 'signal')"
-                  class="autocomplete-menu"
+                  class="autocomplete-menu open-upward"
                 >
                   <li
                     v-for="(value, index) in autocompleteOptions('form', 'signal')"
@@ -4813,7 +4877,7 @@ onUnmounted(() => {
                 <ul
                   v-if="autocompleteOptions('form', 'antenna').length"
                   :id="autocompleteLabelId('form', 'antenna')"
-                  class="autocomplete-menu"
+                  class="autocomplete-menu open-upward"
                 >
                   <li
                     v-for="(value, index) in autocompleteOptions('form', 'antenna')"
@@ -4894,6 +4958,7 @@ onUnmounted(() => {
           <div class="table-wrap log-table-wrap">
             <table class="log-table">
               <colgroup>
+                <col class="drag-col" />
                 <col class="serial-col" />
                 <col class="callsign-col" />
                 <col class="time-col" />
@@ -4906,6 +4971,7 @@ onUnmounted(() => {
               </colgroup>
               <thead>
                 <tr>
+                  <th :title="i18nText('拖动调整顺序', 'Drag to reorder')"></th>
                   <th>{{ t('serial') }}</th>
                   <th>{{ t('callsign') }}</th>
                   <th>{{ t('time') }}</th>
@@ -4922,9 +4988,26 @@ onUnmounted(() => {
                   v-for="(record, index) in filteredRecords"
                   :key="record.id"
                   class="editable-row"
+                  :class="{ 'drag-target': dragOverRecordId === record.id }"
                   :title="i18nText('点击修改记录', 'Click to edit record')"
+                  @dragover.prevent="markRecordDragTarget(record)"
+                  @drop.prevent.stop="dropRecordAt(record)"
                   @click="openRecordEditor(record)"
                 >
+                  <td class="drag-cell">
+                    <button
+                      type="button"
+                      class="drag-handle"
+                      draggable="true"
+                      :title="i18nText('拖动调整顺序', 'Drag to reorder')"
+                      :aria-label="i18nText(`拖动第 ${getDisplaySerial(record)} 条记录`, `Drag record ${getDisplaySerial(record)}`)"
+                      @click.stop
+                      @dragstart.stop="startRecordDrag($event, record)"
+                      @dragend="finishRecordDrag"
+                    >
+                      <GripVertical :size="16" />
+                    </button>
+                  </td>
                   <td>{{ getDisplaySerial(record) }}</td>
                   <td><strong class="callsign">{{ record.callsign }}</strong></td>
                   <td>{{ formatClock(record.time) }}</td>

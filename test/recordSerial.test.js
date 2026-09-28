@@ -5,7 +5,8 @@ import {
   assignMissingRecordSerials,
   getNextRecordSerial,
   hasRecordSerial,
-  normalizeRecordSerial
+  normalizeRecordSerial,
+  reorderRecordSequence
 } from '../src/services/recordSerial.js'
 
 test('legacy records receive stable serials from the configured start', () => {
@@ -39,4 +40,15 @@ test('serial validation accepts only positive integers', () => {
   assert.equal(normalizeRecordSerial('0'), null)
   assert.equal(normalizeRecordSerial('-1'), null)
   assert.equal(normalizeRecordSerial('27.5'), null)
+})
+
+test('dragging a displayed row reorders records and assigns continuous descending serials', () => {
+  const records = [
+    { id: 'c', serial: 42 },
+    { id: 'b', serial: 41 },
+    { id: 'a', serial: 40 }
+  ]
+  const reordered = reorderRecordSequence(records, 'a', 'c', 42)
+  assert.deepEqual(reordered.map((record) => record.id), ['a', 'c', 'b'])
+  assert.deepEqual(reordered.map((record) => record.serial), [42, 41, 40])
 })

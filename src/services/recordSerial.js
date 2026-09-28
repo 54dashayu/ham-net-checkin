@@ -39,3 +39,15 @@ export const hasRecordSerial = (records, serial) => {
     records.some((record) => normalizeRecordSerial(record.serial) === normalized)
   )
 }
+
+export const reorderRecordSequence = (displayedRecords, sourceId, targetId, sequenceEnd) => {
+  const reordered = [...displayedRecords]
+  const sourceIndex = reordered.findIndex((record) => record.id === sourceId)
+  const targetIndex = reordered.findIndex((record) => record.id === targetId)
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return reordered
+
+  const [movedRecord] = reordered.splice(sourceIndex, 1)
+  reordered.splice(targetIndex, 0, movedRecord)
+  const lastSerial = Math.max(normalizeRecordSerial(sequenceEnd) || reordered.length, reordered.length)
+  return reordered.map((record, index) => ({ ...record, serial: lastSerial - index }))
+}
