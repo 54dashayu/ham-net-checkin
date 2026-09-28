@@ -400,18 +400,6 @@ const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadChecksum'),
     href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.04.txt'
-  },
-  {
-    label: i18nText('V1.02.1 Win64 回退版', 'V1.02.1 Win64 fallback'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.02.1-Win64-Setup.exe'
-  },
-  {
-    label: i18nText('V1.02.1 macOS 回退版', 'V1.02.1 macOS fallback'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.02.1-macOS.dmg'
-  },
-  {
-    label: i18nText('V1.02.1 回退版校验文件', 'V1.02.1 fallback checksums'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.02.1.txt'
   }
 ])
 const sourceFieldLabel = (source) =>
