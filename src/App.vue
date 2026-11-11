@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import {
   BookOpen,
   Download,
@@ -108,7 +108,7 @@ const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
 const appVersion = 'V1.04.01'
-const availableUpdate = ref(null)
+const availableUpdate = shallowRef(null)
 const updateStatus = ref('')
 const updateInstalling = ref(false)
 const checkAppUpdate = async (manual = false) => {
@@ -125,7 +125,7 @@ const installAppUpdate = async () => {
   if (!window.confirm('安装更新需要退出软件。请先保存当前点名记录，确认后开始下载并安装。')) return
   updateInstalling.value = true
   try {
-    localStorage.setItem('ham-before-update-backup', JSON.stringify({ at: new Date().toISOString(), data: Object.fromEntries(Object.keys(localStorage).filter(key => key.startsWith('ham-') && key !== 'ham-before-update-backup').map(key => [key, localStorage.getItem(key)])) }))
+    localStorage.setItem('ham-before-update-backup', JSON.stringify({ at: new Date().toISOString(), data: Object.fromEntries(Object.keys(localStorage).filter(key => key.startsWith('ham-net-checkin-records-v1') || key.startsWith('ham-net-checkin-activity-config-v1')).map(key => [key, localStorage.getItem(key)])) }))
     let downloaded = 0
     await availableUpdate.value.downloadAndInstall(event => {
       if (event.event === 'Started') updateStatus.value = '正在下载更新…'
