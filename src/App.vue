@@ -111,6 +111,7 @@ const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
 const appVersion = 'V1.04.02'
 const availableUpdate = shallowRef(null)
 const updateStatus = ref('')
+const updateConfirmOpen = ref(false)
 const updateInstalling = ref(false)
 const checkAppUpdate = async (manual = false) => {
   try {
@@ -123,7 +124,7 @@ const checkAppUpdate = async (manual = false) => {
 }
 const installAppUpdate = async () => {
   if (!availableUpdate.value?.downloadAndInstall || updateInstalling.value) return
-  if (!window.confirm('安装更新需要退出软件。请先保存当前点名记录，确认后开始下载并安装。')) return
+  updateConfirmOpen.value = false
   updateInstalling.value = true
   try {
     localStorage.setItem('ham-before-update-backup', JSON.stringify({ at: new Date().toISOString(), data: Object.fromEntries(Object.keys(localStorage).filter(key => key.startsWith('ham-net-checkin-records-v1') || key.startsWith('ham-net-checkin-activity-config-v1')).map(key => [key, localStorage.getItem(key)])) }))
@@ -4435,7 +4436,7 @@ onUnmounted(() => {
 
 <template>
   <main class="app-shell" :class="{ 'has-public-bar': isPublicWebVersion, 'has-update-bar': !!availableUpdate }">
-    <div v-if="availableUpdate" class="public-limit-bar">发现新版 {{ availableUpdate.version }}　<button v-if="availableUpdate.downloadAndInstall" :disabled="updateInstalling" @click="installAppUpdate">下载并安装</button>　<a href="https://bh1jss.net/#checkin-downloads" target="_blank" rel="noopener noreferrer">官方下载</a>　<span>{{ updateStatus }}</span>　<button :disabled="updateInstalling" @click="availableUpdate = null">稍后</button></div>
+    <div v-if="availableUpdate" class="public-limit-bar">发现新版 {{ availableUpdate.version }}　<button v-if="availableUpdate.downloadAndInstall" :disabled="updateInstalling" @click="updateConfirmOpen = true">下载并安装</button>　<a href="https://app.bh1jss.net/#checkin-downloads" target="_blank" rel="noopener noreferrer">官方下载</a>　<span>{{ updateStatus }}</span>　<button :disabled="updateInstalling" @click="availableUpdate = null">稍后</button></div>
     <div v-if="isPublicWebVersion" class="public-limit-bar">
       <span>{{ publicWebTopText }}</span>
       <a
@@ -5272,6 +5273,17 @@ onUnmounted(() => {
         </div>
       </section>
     </section>
+
+    <div v-if="updateConfirmOpen" class="modal-backdrop" @click.self="updateConfirmOpen = false">
+      <section class="record-modal" role="dialog" aria-modal="true" aria-labelledby="update-confirm-title">
+        <h2 id="update-confirm-title">安装更新</h2>
+        <p>安装更新需要退出软件。请先保存当前点名记录，确认后开始下载并安装。原有点名记录、配置和资料库授权将保留。</p>
+        <div class="serial-modal-actions">
+          <button class="tool-button" @click="updateConfirmOpen = false">取消</button>
+          <button class="primary-action" @click="installAppUpdate">确认下载并安装</button>
+        </div>
+      </section>
+    </div>
 
     <div v-if="serialEditorOpen" class="modal-backdrop serial-editor-backdrop" @click.self="closeSerialEditor">
       <form class="serial-modal" @submit.prevent="applySerialEditor">
