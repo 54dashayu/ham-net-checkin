@@ -116,7 +116,7 @@ const checkAppUpdate = async (manual = false) => {
   try {
     updateStatus.value = manual ? '正在检查更新…' : ''
     availableUpdate.value = isTauri() ? await checkNativeUpdate() : await fetchAppUpdate(__APP_VERSION__)
-    updateStatus.value = availableUpdate.value ? `发现新版 ${availableUpdate.value.version}` : (manual ? '当前已是最新版本' : '')
+    updateStatus.value = availableUpdate.value ? '' : (manual ? '当前已是最新版本' : '')
   } catch {
     updateStatus.value = manual ? '暂时无法检查更新，请稍后重试' : ''
   }
@@ -4434,7 +4434,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="app-shell" :class="{ 'has-public-bar': isPublicWebVersion }">
+  <main class="app-shell" :class="{ 'has-public-bar': isPublicWebVersion, 'has-update-bar': !!availableUpdate }">
     <div v-if="availableUpdate" class="public-limit-bar">发现新版 {{ availableUpdate.version }}　<button v-if="availableUpdate.downloadAndInstall" :disabled="updateInstalling" @click="installAppUpdate">下载并安装</button>　<a href="https://bh1jss.net/#checkin-downloads" target="_blank" rel="noopener noreferrer">官方下载</a>　<span>{{ updateStatus }}</span>　<button :disabled="updateInstalling" @click="availableUpdate = null">稍后</button></div>
     <div v-if="isPublicWebVersion" class="public-limit-bar">
       <span>{{ publicWebTopText }}</span>

@@ -58,8 +58,13 @@ button {
   padding: 10px;
 }
 
-.app-shell.has-public-bar {
+.app-shell.has-public-bar,
+.app-shell.has-update-bar {
   grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.app-shell.has-public-bar.has-update-bar {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
 }
 
 .public-limit-bar {
