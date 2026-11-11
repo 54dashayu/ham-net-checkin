@@ -1,3 +1,5 @@
+import { canonicalizeMonitoredCallsign } from './callsign'
+
 const DIRECTORY_CSV_URL = 'https://w0chp.radio/digital-radio-lists/ysf-reflectors/download.csv'
 const DIRECTORY_PAGE_URL = 'https://w0chp.radio/digital-radio-lists/ysf-reflectors/'
 const VERIFIED_CHINA_DASHBOARDS = new Set(['YSF-18829', 'YSF-46004', 'YSF-46008', 'YSF-46059'])
@@ -245,8 +247,8 @@ export function parseYsfDashboard(html) {
     const statusIndex = indexOf(/status/)
     for (const row of tableRows.slice(tableRows.indexOf(headerRow) + 1)) {
       const cells = [...row.cells]
-      const callsign = textOf(cells[callIndex]).split(/\s+/)[0].toUpperCase()
-      if (!/^[A-Z0-9/-]{3,}$/.test(callsign)) continue
+      const callsign = canonicalizeMonitoredCallsign(textOf(cells[callIndex]).split(/\s+/)[0])
+      if (!callsign) continue
       rows.push({
         callsign,
         gateway: gatewayIndex >= 0 ? textOf(cells[gatewayIndex]) : '',

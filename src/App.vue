@@ -35,6 +35,8 @@ import { gridToAddressText, isMaidenheadGrid } from './services/gridAddress'
 import { getExcelColumns } from './services/excelColumns'
 import { fetchHamboxLastHeard } from './services/hamboxClient'
 import { localizeBmQth } from './services/localizedAddress'
+import { fetchAppUpdate } from './services/appUpdate'
+import { canonicalizeMonitoredCallsign, inferMonitoredMode } from './services/callsign'
 import { fetchMmdvmLastHeard } from './services/mmdvmClient'
 import {
   fetchYsfDashboard,
@@ -102,7 +104,18 @@ const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || get
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
-const appVersion = 'V1.04'
+const appVersion = 'V1.04.01'
+const availableUpdate = ref(null)
+const updateStatus = ref('')
+const checkAppUpdate = async (manual = false) => {
+  try {
+    updateStatus.value = manual ? '正在检查更新…' : ''
+    availableUpdate.value = await fetchAppUpdate('1.4.1')
+    updateStatus.value = availableUpdate.value ? `发现新版 ${availableUpdate.value.version}` : (manual ? '当前已是最新版本' : '')
+  } catch {
+    updateStatus.value = manual ? '暂时无法检查更新，请稍后重试' : ''
+  }
+}
 
 const i18nMessages = {
   zh: {
@@ -391,15 +404,15 @@ const browserBridgeDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/H
 const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadWin64'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.04-Win64-Setup.exe'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.04.01-Win64-Setup.exe'
   },
   {
     label: t('desktopDownloadMacOS'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.04-macOS.dmg'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.04.01-macOS.dmg'
   },
   {
     label: t('desktopDownloadChecksum'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.04.txt'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.04.01.txt'
   }
 ])
 const sourceFieldLabel = (source) =>
@@ -717,9 +730,7 @@ const sanitizeCallsignInput = (value, { allowSlash = false } = {}) => {
 const normalizeCallsign = (value) => sanitizeCallsignInput(value, { allowSlash: true })
 
 const extractCallsignFromText = (value) => {
-  const normalized = toHalfWidth(value).toUpperCase()
-  const match = normalized.match(/\b[A-Z0-9]{1,3}\d[A-Z0-9]{2,}(?:\/[A-Z0-9]+)?\b/)
-  return match ? normalizeCallsign(match[0]) : ''
+  return canonicalizeMonitoredCallsign(value)
 }
 
 const getCoreCallsign = (value) => {
@@ -2435,7 +2446,7 @@ const rebuildFmoCandidatesFromDashboardModel = () => {
         grid,
         device: matchedLog?.device || '',
         power: matchedLog?.power || '',
-        mode: matchedLog?.mode || 'FMO',
+        mode: item.detectedMode || matchedLog?.mode || 'FMO',
         comment: item.endTime ? matchedLog?.comment || '最近发言' : '正在发言',
         relayName: item.serverName || matchedLog?.relayName || currentRelayName.value,
         sourceLabel: item.endTime ? '最近发言' : '正在通联',
@@ -2477,12 +2488,12 @@ const resolveCandidateGrid = async (candidate) => {
 }
 
 const normalizeFmoQso = (item, sourceLabel = '最近通联') => {
-  const callsign = normalizeCallsign(item.toCallsign || item.callsign || item.fromCallsign || '')
+  const callsign = canonicalizeMonitoredCallsign(item.toCallsign || item.callsign || item.fromCallsign || '')
   if (!callsign) return null
   const profile = profileByCallsign.value.get(callsign)
   const comment = firstValue(item.toComment, item.comment, item.app_fmo_comment_utf8, item.remark)
   const grid = firstValue(item.toGrid, item.grid, item.gridsquare)
-  const mode = item.mode || item.app_fmo_mode || 'FMO'
+  const mode = inferMonitoredMode(item.toCallsign || item.callsign || item.fromCallsign) || item.mode || item.app_fmo_mode || 'FMO'
   const rawQth = firstValue(
     item.qth,
     item.toQth,
@@ -2526,7 +2537,7 @@ const normalizeFmoQso = (item, sourceLabel = '最近通联') => {
 }
 
 const normalizeMmdvmQso = (item, index, targetName = '') => {
-  const callsign = normalizeCallsign(item.callsign || '')
+  const callsign = canonicalizeMonitoredCallsign(item.callsign || '')
   if (!callsign) return null
   const profile = profileByCallsign.value.get(callsign)
   const timeslot = normalizeMmdvmTimeslot(item.timeslot)
@@ -2561,7 +2572,7 @@ const normalizeMmdvmTimeslot = (value) => {
 }
 
 const normalizeHamboxQso = (item, index, targetName = '') => {
-  const callsign = normalizeCallsign(item.from || item.srcCall || '')
+  const callsign = canonicalizeMonitoredCallsign(item.from || item.srcCall || '')
   if (!callsign || /^\d+$/.test(callsign)) return null
   const profile = profileByCallsign.value.get(callsign)
   const rawQth = [item.country, item.state, item.city].filter(Boolean).join(' ')
@@ -2589,7 +2600,7 @@ const normalizeHamboxQso = (item, index, targetName = '') => {
 }
 
 const normalizeYsfQso = (item, index, targetName = '') => {
-  const callsign = normalizeCallsign(item.callsign || '')
+  const callsign = canonicalizeMonitoredCallsign(item.callsign || '')
   if (!callsign) return null
   const profile = profileByCallsign.value.get(callsign)
   return {
@@ -2612,7 +2623,7 @@ const normalizeYsfQso = (item, index, targetName = '') => {
 }
 
 const normalizeDstarQso = (item, index, targetName = '') => {
-  const callsign = normalizeCallsign(item.callsign || '')
+  const callsign = canonicalizeMonitoredCallsign(item.callsign || '')
   if (!callsign) return null
   const profile = profileByCallsign.value.get(callsign)
   return {
@@ -2636,7 +2647,7 @@ const normalizeDstarQso = (item, index, targetName = '') => {
 
 const normalizeBmQso = (item, index, targetName = '') => {
   const callsign =
-    normalizeCallsign(
+    canonicalizeMonitoredCallsign(
       item.SourceCall ||
         item.sourceCall ||
         item.SourceCallsign ||
@@ -2722,7 +2733,7 @@ const isBmControlPayload = (call) => {
   const controlCallsign = normalizeCallsign(activityConfig.controlCallsign)
   if (!controlCallsign) return false
   const payloadCallsign =
-    normalizeCallsign(
+    canonicalizeMonitoredCallsign(
       call?.SourceCall ||
         call?.sourceCall ||
         call?.SourceCallsign ||
@@ -2832,7 +2843,7 @@ const handleFmoEvent = (message) => {
   if (message?.type !== 'qso' || message?.subType !== 'callsign') return
   const data = message?.data || {}
   const now = Date.now()
-  const callsign = normalizeCallsign(data.callsign || data.toCallsign || '')
+  const callsign = canonicalizeMonitoredCallsign(data.callsign || data.toCallsign || '')
   const relayName = firstValue(data.relayName, data.serverName, data.stationName)
   const isHost = !!data.isHost
   const eventName = String(data.Event || data.event || data.status || data.state || '').toLowerCase()
@@ -2859,6 +2870,7 @@ const handleFmoEvent = (message) => {
         endTime: null,
         serverName: relayName || currentRelayName.value,
         serverUid: data.serverUid || data.uid || '',
+        detectedMode: inferMonitoredMode(data.callsign || data.toCallsign),
         isHost
       },
       ...withoutCurrent
@@ -4349,6 +4361,7 @@ watch(
 )
 
 onMounted(async () => {
+  if (window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:') checkAppUpdate()
   loadPublicSession()
   loadActivityConfig()
   loadRecords()
@@ -4395,6 +4408,7 @@ onUnmounted(() => {
 
 <template>
   <main class="app-shell" :class="{ 'has-public-bar': isPublicWebVersion }">
+    <div v-if="availableUpdate" class="public-limit-bar">发现新版 {{ availableUpdate.version }}　<a :href="availableUpdate.downloadPage" target="_blank" rel="noopener noreferrer">前往官方下载</a>　<button @click="availableUpdate = null">稍后</button></div>
     <div v-if="isPublicWebVersion" class="public-limit-bar">
       <span>{{ publicWebTopText }}</span>
       <a
@@ -5402,6 +5416,7 @@ onUnmounted(() => {
       <div class="about-modal">
         <div class="modal-head">
           <h2>{{ t('aboutTitle') }} <span class="version-badge">{{ appVersion }}</span></h2>
+          <p><button @click="checkAppUpdate(true)">检查更新</button> {{ updateStatus }}</p>
           <button type="button" class="icon-button" :title="t('close')" @click="aboutOpen = false">X</button>
         </div>
         <p>

@@ -1,5 +1,6 @@
 import { normalizeHost } from './fmoClient'
 import { fetchTextViaBrowserBridge } from './browserBridge'
+import { canonicalizeMonitoredCallsign } from './callsign'
 
 const targetLabels = [
   /目标/,
@@ -86,10 +87,10 @@ function parseLastHeardRows(doc) {
 
     for (const row of rows.slice(rows.indexOf(headerRow) + 1)) {
       if (!row.cells.length) continue
-      const callsign = valueAt(row, headers, [/呼号/, /call\s*sign/i, /callsign/i, /^call$/i])
-        .split(/\s+/)[0]
-        .toUpperCase()
-      if (!/^[A-Z0-9/]{3,}$/.test(callsign)) continue
+      const callsign = canonicalizeMonitoredCallsign(
+        valueAt(row, headers, [/呼号/, /call\s*sign/i, /callsign/i, /^call$/i]).split(/\s+/)[0]
+      )
+      if (!callsign) continue
 
       const time = valueAt(row, headers, [/时间/, /time/i, /date/i])
       const target = valueAt(row, headers, [/目标/, /target/i, /reflector/i, /talk\s*group/i])

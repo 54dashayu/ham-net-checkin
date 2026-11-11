@@ -1,3 +1,5 @@
+import { canonicalizeMonitoredCallsign } from './callsign'
+
 const verifiedChinaDstarRooms = [
   { reflector: 'XLX004', modules: ['C', 'E'], name: '台州', url: 'http://121.43.36.126/' },
   { reflector: 'XLX055', modules: ['A', 'B', 'C'], name: 'Team Helix', url: 'http://52.80.4.154/dstar/' },
@@ -52,8 +54,8 @@ export function parseDstarDashboard(html, selectedModule = '') {
     const explicitModuleIndex = headerIndex(headers, [/^module$/, /模块/])
     for (const row of tableRows.slice(tableRows.indexOf(headerRow) + 1)) {
       const cells = [...row.cells]
-      const callsign = textOf(cells[callsignIndex]).split(/\s+/)[0].toUpperCase()
-      if (!/^[A-Z0-9]{3,}$/.test(callsign)) continue
+      const callsign = canonicalizeMonitoredCallsign(textOf(cells[callsignIndex]).split(/\s+/)[0])
+      if (!callsign) continue
       const lastCell = textOf(cells.at(-1)).toUpperCase()
       const module = (
         explicitModuleIndex >= 0 ? textOf(cells[explicitModuleIndex]) : /^[A-Z]$/.test(lastCell) ? lastCell : ''
