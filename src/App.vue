@@ -108,7 +108,7 @@ const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || get
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
-const appVersion = 'V1.04.02'
+const appVersion = 'V1.04.03'
 const availableUpdate = shallowRef(null)
 const updateStatus = ref('')
 const updateConfirmOpen = ref(false)

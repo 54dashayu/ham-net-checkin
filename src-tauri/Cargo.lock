@@ -1494,7 +1494,7 @@ dependencies = [
 
 [[package]]
 name = "ham-checkin-webview"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "base64 0.22.1",
  "rfd",
