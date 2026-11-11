@@ -68,7 +68,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm run webview:build -- --bundles dmg
+          npm run webview:build -- --bundles app,dmg
           dmg="$(find src-tauri/target/release/bundle/dmg -name '*.dmg' -type f -print -quit)"
           if [[ -z "$dmg" ]]; then
             echo "macOS DMG was not generated." >&2
