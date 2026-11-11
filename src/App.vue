@@ -1850,7 +1850,7 @@ const candidateForStaging = (candidate) => {
   return {
     ...candidate,
     callsign: baseCallsign,
-    displayCallsign: candidate.callsign
+    displayCallsign: candidate.displayCallsign || candidate.callsign
   }
 }
 
@@ -2457,6 +2457,7 @@ const rebuildFmoCandidatesFromDashboardModel = () => {
         ...(matchedLog || {}),
         id: `fmo-live-${item.callsign}-${startedAt}`,
         callsign: item.callsign,
+        displayCallsign: item.displayCallsign || matchedLog?.displayCallsign || item.callsign,
         time: formatTimestamp(timestamp),
         durationSeconds: Math.max(
           1,
@@ -2541,6 +2542,7 @@ const normalizeFmoQso = (item, sourceLabel = '最近通联') => {
   return {
     id: `${sourceLabel}-${item.logId || item.timestamp || Date.now()}-${callsign}`,
     callsign,
+    displayCallsign: toHalfWidth(item.toCallsign || item.callsign || item.fromCallsign || '').trim().toUpperCase(),
     time: formatTimestamp(item.timestamp || item.startTime),
     durationSeconds: Number(firstValue(item.duration, item.durationSeconds, item.talkingSeconds, item.elapsedSeconds, item.endTime && item.startTime ? Math.max(0, (Number(item.endTime) - Number(item.startTime)) / 1000) : '')) || 0,
     liveStartedAt: item.liveStartedAt || 0,
@@ -2892,6 +2894,7 @@ const handleFmoEvent = (message) => {
         serverName: relayName || currentRelayName.value,
         serverUid: data.serverUid || data.uid || '',
         detectedMode: inferMonitoredMode(data.callsign || data.toCallsign),
+        displayCallsign: toHalfWidth(data.callsign || data.toCallsign || '').trim().toUpperCase(),
         isHost
       },
       ...withoutCurrent
@@ -4660,7 +4663,7 @@ onUnmounted(() => {
             @keydown.enter.prevent="commitStagedFmoCandidate(candidate)"
             @keydown.space.prevent="commitStagedFmoCandidate(candidate)"
           >
-            <strong>{{ candidate.callsign }}</strong>
+            <strong>{{ candidate.displayCallsign || candidate.callsign }}</strong>
             <span>{{ candidate.qth || candidate.grid || '-' }}</span>
             <small v-if="getSessionRecordCountForCallsign(candidate.callsign)">{{ i18nText('本次已记录', 'Logged now') }}</small>
             <em class="inline-featured-tooltip">{{ i18nText('双击卡片录入', 'Double-click card to enter') }}</em>
@@ -5238,7 +5241,7 @@ onUnmounted(() => {
                   :class="{ live: candidate.isSpeaking, promoted: promotedFmoCandidates.some((item) => item.id === candidate.id) }"
                   @click="stageFmoCandidate(candidate)"
                 >
-                  <td><strong class="callsign">{{ candidate.callsign }}</strong></td>
+                  <td><strong class="callsign">{{ candidate.displayCallsign || candidate.callsign }}</strong></td>
                   <td>{{ formatFullDateTime(candidate.time) }}</td>
                   <td>{{ candidate.qth || candidate.grid || '-' }}</td>
                   <td>{{ candidate.device || '-' }}</td>
