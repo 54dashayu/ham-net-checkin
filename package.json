@@ -86,6 +86,9 @@
   },
   "dependencies": {
     "@lucide/vue": "^1.21.0",
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-process": "^2.4.0",
+    "@tauri-apps/plugin-updater": "^2.14.1",
     "exceljs": "^4.4.0",
     "sql.js": "^1.14.1",
     "vue": "^3.5.34",

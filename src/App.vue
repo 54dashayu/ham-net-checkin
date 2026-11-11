@@ -36,6 +36,9 @@ import { getExcelColumns } from './services/excelColumns'
 import { fetchHamboxLastHeard } from './services/hamboxClient'
 import { localizeBmQth } from './services/localizedAddress'
 import { fetchAppUpdate } from './services/appUpdate'
+import { isTauri } from '@tauri-apps/api/core'
+import { check as checkNativeUpdate } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/plugin-process'
 import { canonicalizeMonitoredCallsign, inferMonitoredMode } from './services/callsign'
 import { fetchMmdvmLastHeard } from './services/mmdvmClient'
 import {
@@ -107,14 +110,32 @@ const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
 const appVersion = 'V1.04.01'
 const availableUpdate = ref(null)
 const updateStatus = ref('')
+const updateInstalling = ref(false)
 const checkAppUpdate = async (manual = false) => {
   try {
     updateStatus.value = manual ? '正在检查更新…' : ''
-    availableUpdate.value = await fetchAppUpdate('1.4.1')
+    availableUpdate.value = isTauri() ? await checkNativeUpdate() : await fetchAppUpdate('1.4.1')
     updateStatus.value = availableUpdate.value ? `发现新版 ${availableUpdate.value.version}` : (manual ? '当前已是最新版本' : '')
   } catch {
     updateStatus.value = manual ? '暂时无法检查更新，请稍后重试' : ''
   }
+}
+const installAppUpdate = async () => {
+  if (!availableUpdate.value?.downloadAndInstall || updateInstalling.value) return
+  if (!window.confirm('安装更新需要退出软件。请先保存当前点名记录，确认后开始下载并安装。')) return
+  updateInstalling.value = true
+  try {
+    localStorage.setItem('ham-before-update-backup', JSON.stringify({ at: new Date().toISOString(), data: Object.fromEntries(Object.keys(localStorage).filter(key => key.startsWith('ham-') && key !== 'ham-before-update-backup').map(key => [key, localStorage.getItem(key)])) }))
+    let downloaded = 0
+    await availableUpdate.value.downloadAndInstall(event => {
+      if (event.event === 'Started') updateStatus.value = '正在下载更新…'
+      if (event.event === 'Progress') { downloaded += event.data.chunkLength; updateStatus.value = `已下载 ${(downloaded / 1048576).toFixed(1)} MB` }
+      if (event.event === 'Finished') updateStatus.value = '下载完成，正在校验并安装…'
+    })
+    await relaunch()
+  } catch {
+    updateStatus.value = '更新失败，当前版本可继续使用。请重试或从官网下载。'
+  } finally { updateInstalling.value = false }
 }
 
 const i18nMessages = {
@@ -4408,7 +4429,7 @@ onUnmounted(() => {
 
 <template>
   <main class="app-shell" :class="{ 'has-public-bar': isPublicWebVersion }">
-    <div v-if="availableUpdate" class="public-limit-bar">发现新版 {{ availableUpdate.version }}　<a :href="availableUpdate.downloadPage" target="_blank" rel="noopener noreferrer">前往官方下载</a>　<button @click="availableUpdate = null">稍后</button></div>
+    <div v-if="availableUpdate" class="public-limit-bar">发现新版 {{ availableUpdate.version }}　<button v-if="availableUpdate.downloadAndInstall" :disabled="updateInstalling" @click="installAppUpdate">下载并安装</button>　<a href="https://bh1jss.net/#checkin-downloads" target="_blank" rel="noopener noreferrer">官方下载</a>　<span>{{ updateStatus }}</span>　<button :disabled="updateInstalling" @click="availableUpdate = null">稍后</button></div>
     <div v-if="isPublicWebVersion" class="public-limit-bar">
       <span>{{ publicWebTopText }}</span>
       <a

@@ -8,6 +8,9 @@ on:
 
 jobs:
   build-win64:
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
     name: Build Win64 package
     runs-on: windows-latest
     steps:
@@ -41,6 +44,7 @@ jobs:
             throw "Win64 NSIS installer was not generated."
           }
           Copy-Item $nsis.FullName "release\windows-win64\HAM-Checkin-$displayVersion-Win64-Setup.exe"
+          Copy-Item "$($nsis.FullName).sig" "release\windows-win64\HAM-Checkin-$displayVersion-Win64-Setup.exe.sig"
           $blockmap = Get-ChildItem -Path src-tauri\target\release\bundle\nsis -Filter *.nsis.zip -File -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($blockmap) {
             Copy-Item $blockmap.FullName "release\windows-win64\HAM-Checkin-$displayVersion-Win64-Setup.nsis.zip"

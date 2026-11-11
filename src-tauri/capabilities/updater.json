@@ -1,0 +1,6 @@
+{
+  "identifier": "desktop-updater",
+  "windows": ["main"],
+  "remote": { "urls": ["http://127.0.0.1:37175"] },
+  "permissions": ["updater:default", "process:allow-restart"]
+}

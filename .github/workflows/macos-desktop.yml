@@ -20,6 +20,8 @@ jobs:
     name: Build macOS DMG
     runs-on: macos-latest
     env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
       HAS_APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
 
     steps:
@@ -105,6 +107,7 @@ jobs:
           set -euo pipefail
           version="1.04.01"
           mkdir -p release/macos
+          find src-tauri/target/release/bundle/macos -name '*.tar.gz*' -type f -exec cp {} release/macos/ \;
           find src-tauri/target/release/bundle/dmg -name '*.dmg' -type f -print -exec cp {} release/macos/ \;
           for dmg in release/macos/*.dmg; do
             mv "$dmg" "release/macos/HAM-Checkin-${version}-macOS.dmg"
