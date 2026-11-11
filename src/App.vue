@@ -427,15 +427,15 @@ const browserBridgeDownloadUrl = 'https://fmo.bh1jss.net/downloads/ham-checkin/H
 const desktopDownloadLinks = computed(() => [
   {
     label: t('desktopDownloadWin64'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.04.01-Win64-Setup.exe'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.04.03-Win64-Setup.exe'
   },
   {
     label: t('desktopDownloadMacOS'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.04.01-macOS.dmg'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/HAM-Checkin-1.04.03-macOS.dmg'
   },
   {
     label: t('desktopDownloadChecksum'),
-    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.04.01.txt'
+    href: 'https://fmo.bh1jss.net/downloads/ham-checkin/SHA256SUMS-HAM-Checkin-1.04.03.txt'
   }
 ])
 const sourceFieldLabel = (source) =>
