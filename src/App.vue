@@ -36,6 +36,7 @@ import { getExcelColumns } from './services/excelColumns'
 import { fetchHamboxLastHeard } from './services/hamboxClient'
 import { localizeBmQth } from './services/localizedAddress'
 import { fetchAppUpdate } from './services/appUpdate'
+import { resolveStationLocation } from './services/stationLocation'
 import { isTauri } from '@tauri-apps/api/core'
 import { check as checkNativeUpdate } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
@@ -107,14 +108,14 @@ const sharedProfileApiBase = import.meta.env.VITE_SHARED_PROFILE_API_BASE || get
 const sharedProfileApiPath = (path) =>
   isPublicWebVersion.value ? serverApiPath(path) : `${sharedProfileApiBase}${path}`
 const authorQrCodeUrl = `${serverBasePath}/author-wechat-qrcode.jpg`
-const appVersion = 'V1.04.01'
+const appVersion = 'V1.04.02'
 const availableUpdate = shallowRef(null)
 const updateStatus = ref('')
 const updateInstalling = ref(false)
 const checkAppUpdate = async (manual = false) => {
   try {
     updateStatus.value = manual ? '正在检查更新…' : ''
-    availableUpdate.value = isTauri() ? await checkNativeUpdate() : await fetchAppUpdate('1.4.1')
+    availableUpdate.value = isTauri() ? await checkNativeUpdate() : await fetchAppUpdate(__APP_VERSION__)
     updateStatus.value = availableUpdate.value ? `发现新版 ${availableUpdate.value.version}` : (manual ? '当前已是最新版本' : '')
   } catch {
     updateStatus.value = manual ? '暂时无法检查更新，请稍后重试' : ''
@@ -1905,7 +1906,8 @@ const chooseFmoCandidate = (candidate) => {
     firstTimeRemark ? i18nText(firstTimeRemark, 'First check-in') : '',
     candidateSourceLabel(candidate.sourceLabel),
     relayText,
-    candidate.comment
+    candidate.comment,
+    candidate.locationSource === 'APRS 最近位置' ? 'APRS 最近位置' : ''
   ]
     .filter(Boolean)
     .join(' / ')
@@ -2496,16 +2498,15 @@ const rebuildFmoCandidatesFromDashboardModel = () => {
 }
 
 const resolveCandidateGrid = async (candidate) => {
-  const grid = candidate.grid || (isMaidenheadGrid(candidate.qth) ? candidate.qth : '')
-  if (!grid) return
   try {
-    const address = await gridToAddressText(grid)
-    if (!address) return
+    const location = await resolveStationLocation(candidate, { isGrid: isMaidenheadGrid, gridAddress: gridToAddressText })
+    if (!location?.qth) return
     fmoCandidates.value = fmoCandidates.value.map((item) =>
-      item.callsign === candidate.callsign ? { ...item, qth: address, grid } : item
+      item.id === candidate.id ? { ...item, ...location } : item
     )
+    stagedFmoCandidates.value = stagedFmoCandidates.value.map((item) => item.id === candidate.id ? { ...item, ...location } : item)
   } catch (error) {
-    console.warn('Grid 地址解析失败:', grid, error)
+    console.warn('位置查询暂不可用')
   }
 }
 
@@ -2895,6 +2896,8 @@ const handleFmoEvent = (message) => {
         serverUid: data.serverUid || data.uid || '',
         detectedMode: inferMonitoredMode(data.callsign || data.toCallsign),
         displayCallsign: toHalfWidth(data.callsign || data.toCallsign || '').trim().toUpperCase(),
+        latitude: data.latitude ?? data.lat,
+        longitude: data.longitude ?? data.lon ?? data.lng,
         isHost
       },
       ...withoutCurrent
@@ -4664,7 +4667,7 @@ onUnmounted(() => {
             @keydown.space.prevent="commitStagedFmoCandidate(candidate)"
           >
             <strong>{{ candidate.displayCallsign || candidate.callsign }}</strong>
-            <span>{{ candidate.qth || candidate.grid || '-' }}</span>
+            <span>{{ candidate.qth || candidate.grid || '-' }}<small v-if="candidate.locationSource === 'APRS 最近位置'"> · APRS 最近位置</small></span>
             <small v-if="getSessionRecordCountForCallsign(candidate.callsign)">{{ i18nText('本次已记录', 'Logged now') }}</small>
             <em class="inline-featured-tooltip">{{ i18nText('双击卡片录入', 'Double-click card to enter') }}</em>
             <button
@@ -5243,7 +5246,7 @@ onUnmounted(() => {
                 >
                   <td><strong class="callsign">{{ candidate.displayCallsign || candidate.callsign }}</strong></td>
                   <td>{{ formatFullDateTime(candidate.time) }}</td>
-                  <td>{{ candidate.qth || candidate.grid || '-' }}</td>
+                  <td>{{ candidate.qth || candidate.grid || '-' }}<small v-if="candidate.locationSource === 'APRS 最近位置'"> · APRS 最近位置</small></td>
                   <td>{{ candidate.device || '-' }}</td>
                   <td>{{ candidate.power || '-' }}</td>
                   <td :title="candidate.mode || '-'">{{ candidate.mode || '-' }}</td>

@@ -105,7 +105,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="1.04.01"
+          version="1.04.02"
           mkdir -p release/macos
           find src-tauri/target/release/bundle/macos -name '*.tar.gz*' -type f -exec cp {} release/macos/ \;
           find src-tauri/target/release/bundle/dmg -name '*.dmg' -type f -print -exec cp {} release/macos/ \;
