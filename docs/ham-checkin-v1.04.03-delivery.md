@@ -28,3 +28,5 @@ c877300d998673188f49fbbf8c7313dfa228d92089290a0b5eaa9e847747bf65  HAM-Checkin-1.
 页面回退：阿里云 /var/backups/ham-checkin/20261112-v10403-pages/home-index-before.html；下载页服务器 /var/backups/ham-checkin/20261112-v10403-pages/download-index-before.html。Nginx 下载路由修改前备份为阿里云 /var/backups/ham-checkin/20261111-v10401-final/fmo-before-v10403-downloads.conf。恢复时仅回退相关页面或路由，避免覆盖其他项目后续变更。
 
 后续门禁：使用可用 Windows 原生环境验证安装、跨版本 OTA、点名记录、配置和资料库授权；验收通过后再移除候选标注，并原子切换正式 OTA 清单。
+
+下载区后续调整：按用户要求移除公开回退入口和点名软件升级说明，保留 Windows 候选版短标识。全部现有 SHA-256 下载项改为卡片下方的普通文字链接，不再单独占用卡片；当前页面仅点名软件有此校验链接。原安装包和备份继续保留。调整前页面备份为下载页服务器 /var/backups/ham-checkin/20261112-v10403-pages/download-before-compact-layout.html。
